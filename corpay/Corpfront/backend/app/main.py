@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from contextlib import asynccontextmanager
 import asyncio
+import json
 import os
 from app.config import settings
 from app.database import engine, Base, SessionLocal
@@ -108,7 +109,17 @@ except Exception as e:
 _origins = list(settings.cors_origins)
 _extra = (os.getenv("CORS_ORIGINS_EXTRA") or "").strip()
 if _extra:
-    _origins.extend(o.strip() for o in _extra.split(",") if o.strip())
+    if _extra.startswith("["):
+        try:
+            _parsed = json.loads(_extra)
+            if isinstance(_parsed, list):
+                _origins.extend(str(o).strip() for o in _parsed if o and str(o).strip())
+            else:
+                _origins.extend(o.strip() for o in _extra.split(",") if o.strip())
+        except (json.JSONDecodeError, TypeError):
+            _origins.extend(o.strip() for o in _extra.split(",") if o.strip())
+    else:
+        _origins.extend(o.strip() for o in _extra.split(",") if o.strip())
 if os.getenv("RAILWAY_PUBLIC_DOMAIN"):
     _railway_origin = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
     if _railway_origin not in _origins:

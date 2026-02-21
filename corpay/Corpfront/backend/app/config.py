@@ -52,8 +52,8 @@ class Settings(BaseSettings):
         "http://localhost:5177",
         "http://localhost:5178",
         "http://localhost:5179",
-        "https://corpayadmindashboard.vercel.app",
-        "https://www.corpayadmindashboard.vercel.app",
+        "https://finaltryadmin.vercel.app",
+        "https://frontend-finaltry.vercel.app",
     ]
     
     # File Storage
