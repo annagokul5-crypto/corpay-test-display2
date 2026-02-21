@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime, timezone, date
 from urllib.parse import urljoin
 import os
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models.revenue import Revenue, RevenueTrend, RevenueProportion, SharePrice
 from app.models.posts import SocialPost
 from app.models.employees import EmployeeMilestone
@@ -63,44 +63,81 @@ def _share_price_timestamp_seconds_ago(ts: datetime) -> float:
     return (now - ts).total_seconds()
 
 
-@router.get("/share-price", response_model=SharePriceResponse)
-async def get_share_price(db: Session = Depends(get_db)):
-    """Get current share price"""
+def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
+    """
+    Phase 1: Read-only DB query. Opens session, reads latest SharePrice, closes session.
+    Returns (last_row, should_scrape). should_scrape is True when we need to run the scraper
+    (no manual entry, and no row or row older than 1 hour).
+    """
+    db = SessionLocal()
     try:
-        # Always get the most recent entry from database (prioritize manual entries)
-        share_price = db.query(SharePrice).order_by(SharePrice.timestamp.desc()).first()
-        
-        # If we have a recent manual entry (within last 24 hours), use it
-        if share_price and share_price.api_source == "manual":
-            return share_price
-        
-        # If we have any entry less than 1 hour old, use it (avoids scraper timeout on every request)
-        if share_price and _share_price_timestamp_seconds_ago(share_price.timestamp) < 3600:
-            return share_price
-        
-        # If no data or data is older than 1 hour, fetch from web scraping service
-        if not share_price or _share_price_timestamp_seconds_ago(share_price.timestamp) > 3600:
-            api_data = await SharePriceService.get_share_price()
-            new_share_price = SharePrice(
-                price=api_data["price"],
-                change_percentage=api_data["change_percentage"],
-                api_source=api_data.get("api_source", "mock")
-            )
-            db.add(new_share_price)
-            db.commit()
-            db.refresh(new_share_price)
-            return new_share_price
-        
-        return share_price
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        # Return a safe default so dashboard never gets 500 from this endpoint
+        last_row = db.query(SharePrice).order_by(SharePrice.timestamp.desc()).first()
+        if last_row and last_row.api_source == "manual":
+            return (last_row, False)
+        if last_row and _share_price_timestamp_seconds_ago(last_row.timestamp) < 3600:
+            return (last_row, False)
+        return (last_row, True)
+    finally:
+        db.close()
+
+
+def _return_last_share_price_or_fallback() -> SharePriceResponse:
+    """
+    Error handling: return last known DB value, or hardcoded fallback only if no row exists.
+    Opens a new short-lived session, queries latest SharePrice, closes session.
+    """
+    db = SessionLocal()
+    try:
+        last_row = db.query(SharePrice).order_by(SharePrice.timestamp.desc()).first()
+        if last_row:
+            return SharePriceResponse.model_validate(last_row)
         return SharePriceResponse(
             price=1482.35,
             change_percentage=1.24,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
         )
+    except Exception:
+        return SharePriceResponse(
+            price=1482.35,
+            change_percentage=1.24,
+            timestamp=datetime.now(timezone.utc),
+        )
+    finally:
+        db.close()
+
+
+@router.get("/share-price", response_model=SharePriceResponse)
+async def get_share_price():
+    """
+    Get current share price. Uses read-only session, closes before scraping,
+    then opens a new session only to write scraped data. On any error returns last known DB value.
+    """
+    try:
+        last_row, should_scrape = _get_last_share_price_read_only()
+        if not should_scrape and last_row:
+            return SharePriceResponse.model_validate(last_row)
+        if should_scrape:
+            api_data = await SharePriceService.get_share_price()
+            db = SessionLocal()
+            try:
+                new_share_price = SharePrice(
+                    price=api_data["price"],
+                    change_percentage=api_data["change_percentage"],
+                    api_source=api_data.get("api_source", "mock"),
+                )
+                db.add(new_share_price)
+                db.commit()
+                db.refresh(new_share_price)
+                return SharePriceResponse.model_validate(new_share_price)
+            finally:
+                db.close()
+        if last_row:
+            return SharePriceResponse.model_validate(last_row)
+        return _return_last_share_price_or_fallback()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return _return_last_share_price_or_fallback()
 
 
 @router.get("/card-titles")
@@ -395,6 +432,7 @@ async def get_newsroom_items(limit: int = 12) -> List[NewsroomItemResponse]:
     
     Fetches with depth 20 from source (so Feb 11 etc. behind Featured items are included),
     then returns up to `limit` (default 12). Cached briefly for verification.
+    On scraper/request error, returns last known cached value if any; otherwise [].
     """
     cache_key = f"newsroom_{limit}"
     cached = get(cache_key)
@@ -406,11 +444,16 @@ async def get_newsroom_items(limit: int = 12) -> List[NewsroomItemResponse]:
     # endregion agent log
     if cached is not None:
         return cached
-    # Fetch more from source (look-ahead) so we don't miss items behind "Featured"
-    items = await fetch_corpay_newsroom(limit=20)
-    result = [NewsroomItemResponse(**item) for item in items[:limit]]
-    set(cache_key, result, ttl_seconds=10)
-    return result
+    try:
+        items = await fetch_corpay_newsroom(limit=20)
+        result = [NewsroomItemResponse(**item) for item in items[:limit]]
+        set(cache_key, result, ttl_seconds=10)
+        return result
+    except Exception:
+        last_cached = get(cache_key)
+        if last_cached is not None:
+            return last_cached
+        return []
 
 
 @router.get("/resources-newsroom", response_model=List[NewsroomItemResponse])
@@ -420,16 +463,22 @@ async def get_resources_newsroom_items(limit: int = 4) -> List[NewsroomItemRespo
 
     Source: `https://www.corpay.com/resources/newsroom?page=2`
     Returns up to `limit` items with official url for each. No fallback list.
-    When scraper returns empty, returns previously cached result if any; otherwise [].
+    When scraper returns empty or errors, returns last known cached result if any; otherwise [].
     """
     cache_key = f"resources_newsroom_{limit}"
     cached = get(cache_key)
-    items = await fetch_corpay_resources_newsroom(limit=limit)
-    if not items:
-        return cached if cached is not None else []
-    result = [NewsroomItemResponse(id=idx, **item) for idx, item in enumerate(items)]
-    set(cache_key, result, ttl_seconds=300)
-    return result
+    try:
+        items = await fetch_corpay_resources_newsroom(limit=limit)
+        if not items:
+            return cached if cached is not None else []
+        result = [NewsroomItemResponse(id=idx, **item) for idx, item in enumerate(items)]
+        set(cache_key, result, ttl_seconds=300)
+        return result
+    except Exception:
+        last_cached = get(cache_key)
+        if last_cached is not None:
+            return last_cached
+        return []
 
 
 # Fallback when scraper returns empty (e.g. JS-rendered page). From corpay.com/resources/customer-stories.
