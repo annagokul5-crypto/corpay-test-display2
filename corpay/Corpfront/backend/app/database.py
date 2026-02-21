@@ -12,7 +12,9 @@ from typing import Generator
 from app.config import settings
 
 # DATABASE_URL is loaded from environment (config.py loads .env and Settings.database_url)
-DATABASE_URL = (settings.database_url or "").strip() or "sqlite:///./dashboard.db"
+# Also check DATABASE env var (Railway uses this name)
+import os as _os
+DATABASE_URL = (settings.database_url or "").strip() or _os.getenv("DATABASE_URL", "") or _os.getenv("DATABASE", "") or "sqlite:///./dashboard.db"
 
 # Retry settings for transient SSL/connection drops (Supabase free tier)
 _MAX_DB_RETRIES = 2  # max 2 retries = 3 total attempts

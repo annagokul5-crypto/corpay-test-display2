@@ -13,7 +13,7 @@ interface AuthContextType {
   token: string | null
   isAuthenticated: boolean
   loading: boolean
-  login: (provider: 'google' | 'microsoft') => void
+  login: (email: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -46,10 +46,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const login = (provider: 'google' | 'microsoft') => {
-    const base = (import.meta.env.VITE_API_URL ?? '').toString().trim()
-    const origin = base ? base.replace(/\/+$/, '') : (typeof window !== 'undefined' ? window.location.origin : '')
-    window.location.href = `${origin}/api/admin/auth/login/${provider}`
+  const login = async (email: string, password: string) => {
+    setLoading(true)
+    try {
+      const response = await api.post('admin/auth/login', { email, password })
+      const accessToken = response.data?.access_token
+      if (accessToken) {
+        localStorage.setItem('token', accessToken)
+        setToken(accessToken)
+        api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+      }
+      const loggedInUser = response.data?.user
+      if (loggedInUser) {
+        setUser(loggedInUser)
+      } else {
+        await fetchUser()
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   const logout = () => {

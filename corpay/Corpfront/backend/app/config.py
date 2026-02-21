@@ -19,8 +19,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database URL from DATABASE_URL env var. Empty when unset; consumers should fall back to SQLite to avoid crash.
-    database_url: str = Field(default="", validation_alias="DATABASE_URL")
+    # Database URL from DATABASE_URL or DATABASE env var. Empty when unset; consumers should fall back to SQLite to avoid crash.
+    database_url: str = Field(default=os.getenv("DATABASE_URL", os.getenv("DATABASE", "")), validation_alias="DATABASE_URL")
 
     
     # Supabase Configuration
