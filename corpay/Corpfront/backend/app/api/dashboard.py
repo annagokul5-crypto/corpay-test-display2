@@ -74,19 +74,42 @@ def _share_price_timestamp_seconds_ago(ts: datetime) -> float:
 
 
 def _max_share_price_age_seconds() -> int:
-    """How old a scraped share price can be before we refresh. Default 300s (5 minutes)."""
+    """How old a scraped share price can be before we refresh. Default 60s (1 minute)."""
     try:
-        val = int(os.getenv("SHARE_PRICE_MAX_AGE_SECONDS", "300").strip())
-        return val if val > 0 else 300
+        val = int(os.getenv("SHARE_PRICE_MAX_AGE_SECONDS", "60").strip())
+        return val if val > 0 else 60
     except Exception:
-        return 300
+        return 60
+
+
+def _prune_share_prices(db: Session, keep: int = 5) -> None:
+    """
+    Keep only the latest `keep` scraped rows and remove manual rows.
+    This limits stale data lingering in the DB and ensures fallback uses recent scrape.
+    """
+    try:
+        db.query(SharePrice).filter(SharePrice.api_source == "manual").delete()
+        latest_ids_subq = (
+            db.query(SharePrice.id)
+            .filter(SharePrice.api_source != "manual")
+            .order_by(SharePrice.timestamp.desc())
+            .limit(keep)
+            .subquery()
+        )
+        db.query(SharePrice).filter(
+            SharePrice.api_source != "manual",
+            ~SharePrice.id.in_(latest_ids_subq),
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
     """
     Phase 1: Read-only DB query. Opens session, reads latest SharePrice, closes session.
     Returns (last_row, should_scrape). should_scrape is True when we need to run the scraper
-    (no scraped row, or row older than 1 hour).
+    (no scraped row, or row older than max_age).
     """
     db = SessionLocal()
     try:
@@ -145,17 +168,19 @@ async def get_share_price():
         if not should_scrape and last_row:
             return SharePriceResponse.model_validate(last_row)
         if should_scrape:
-            api_data = await SharePriceService.get_share_price()
+            api_data = await SharePriceService.get_share_price(use_cache=False)
             db = SessionLocal()
             try:
                 new_share_price = SharePrice(
                     price=api_data["price"],
                     change_percentage=api_data["change_percentage"],
-                    api_source=api_data.get("api_source", "mock"),
+                    api_source=api_data.get("api_source", "web_scrape"),
                 )
                 db.add(new_share_price)
                 db.commit()
                 db.refresh(new_share_price)
+                # Cleanup: drop manual rows and keep only the latest 5 scraped rows
+                _prune_share_prices(db, keep=5)
                 return SharePriceResponse.model_validate(new_share_price)
             finally:
                 db.close()

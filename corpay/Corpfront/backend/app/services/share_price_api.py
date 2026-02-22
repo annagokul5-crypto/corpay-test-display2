@@ -6,6 +6,7 @@ from app.utils.cache import get, set
 import logging
 from bs4 import BeautifulSoup
 import re
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,56 @@ logger = logging.getLogger(__name__)
 class SharePriceService:
     """Service for fetching share price from Corpay investor website via web scraping"""
     
+    @staticmethod
+    def _extract_price_and_pct_from_text(page_text: str) -> Tuple[Optional[float], Optional[float]]:
+        price_pattern = re.compile(r"\$([\d,]+\.?\d*)")
+        pct_pattern = re.compile(r"([+-]?\d+\.?\d*)\s*%")
+
+        def _find_price_after(token: str) -> Optional[float]:
+            idx = page_text.lower().find(token.lower())
+            if idx == -1:
+                return None
+            m = price_pattern.search(page_text, idx)
+            if m:
+                try:
+                    return float(m.group(1).replace(",", ""))
+                except ValueError:
+                    return None
+            return None
+
+        # Target the “NYSE: CPAY” block first
+        for token in ["nyse: cpay", "nyse:cpay", "cpay"]:
+            price = _find_price_after(token)
+            if price:
+                # Find first percent after the same token
+                idx = page_text.lower().find(token.lower())
+                pct_match = pct_pattern.search(page_text, idx if idx != -1 else 0)
+                pct = None
+                if pct_match:
+                    try:
+                        pct = float(pct_match.group(1))
+                    except ValueError:
+                        pct = None
+                return price, pct
+
+        # Fallback: first reasonable price in text (50-1000)
+        for m in price_pattern.finditer(page_text):
+            try:
+                cand = float(m.group(1).replace(",", ""))
+                if 50 <= cand <= 1000:
+                    pct_match = pct_pattern.search(page_text, m.end())
+                    pct = None
+                    if pct_match:
+                        try:
+                            pct = float(pct_match.group(1))
+                        except ValueError:
+                            pct = None
+                    return cand, pct
+            except ValueError:
+                continue
+
+        return None, None
+
     @staticmethod
     async def get_share_price(use_cache: bool = True) -> Dict[str, Any]:
         """
@@ -45,72 +96,60 @@ class SharePriceService:
                 )
                 response.raise_for_status()
                 
-                # Parse HTML with BeautifulSoup
                 soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Find the stock price - look for the highlighted price value
-                # Based on the website structure, the price is typically in a prominent display
+                page_text = soup.get_text(" ", strip=True)
+
                 price = None
                 change_percentage = None
-                
-                # Try multiple selectors to find the price
-                # Look for common patterns: $347.89 or similar price formats
-                price_pattern = re.compile(r'\$?([\d,]+\.?\d*)')
-                percentage_pattern = re.compile(r'([+-]?\d+\.?\d*)\s*%')
-                
-                # Method 1: Look for text containing dollar sign followed by numbers
-                price_elements = soup.find_all(string=re.compile(r'\$\d+\.?\d*'))
-                for elem in price_elements:
-                    # Get the parent element to see context
-                    parent = elem.parent if elem.parent else None
-                    if parent:
-                        text = parent.get_text()
-                        # Look for price in format $XXX.XX
-                        match = re.search(r'\$([\d,]+\.?\d*)', text)
-                        if match:
-                            price_str = match.group(1).replace(',', '')
-                            try:
-                                price = float(price_str)
-                                # Look for percentage change nearby
-                                pct_match = re.search(r'([+-]?\d+\.?\d*)\s*%', text)
-                                if pct_match:
-                                    change_percentage = float(pct_match.group(1))
-                                break
-                            except ValueError:
-                                continue
-                
-                # Method 2: Look for specific classes or IDs that might contain stock data
+
+                # Targeted extraction around “NYSE: CPAY”
+                price, change_percentage = SharePriceService._extract_price_and_pct_from_text(page_text)
+
+                # If still missing price, try DOM-based heuristics (existing methods)
                 if price is None:
-                    # Try finding elements with common stock-related classes
+                    price_pattern = re.compile(r'\$?([\d,]+\.?\d*)')
+                    percentage_pattern = re.compile(r'([+-]?\d+\.?\d*)\s*%')
+
+                    price_elements = soup.find_all(string=re.compile(r'\$\d+\.?\d*'))
+                    for elem in price_elements:
+                        parent = elem.parent if elem.parent else None
+                        if parent:
+                            text = parent.get_text()
+                            match = re.search(r'\$([\d,]+\.?\d*)', text)
+                            if match:
+                                price_str = match.group(1).replace(',', '')
+                                try:
+                                    price = float(price_str)
+                                    pct_match = re.search(r'([+-]?\d+\.?\d*)\s*%', text)
+                                    if pct_match:
+                                        change_percentage = float(pct_match.group(1))
+                                    break
+                                except ValueError:
+                                    continue
+
+                if price is None:
                     stock_containers = soup.find_all(['div', 'span', 'p'], class_=re.compile(r'price|stock|share|quote', re.I))
                     for container in stock_containers:
                         text = container.get_text()
-                        # Look for price pattern
                         price_match = re.search(r'\$([\d,]+\.?\d*)', text)
                         if price_match:
                             try:
                                 price = float(price_match.group(1).replace(',', ''))
-                                # Look for percentage in same container
                                 pct_match = re.search(r'([+-]?\d+\.?\d*)\s*%', text)
                                 if pct_match:
                                     change_percentage = float(pct_match.group(1))
-                                if price > 100:  # Reasonable stock price range
+                                if price > 100:
                                     break
                             except ValueError:
                                 continue
-                
-                # Method 3: Search entire page text for price patterns
+
                 if price is None:
-                    page_text = soup.get_text()
-                    # Find all price-like patterns
                     price_matches = re.findall(r'\$([\d,]+\.?\d*)', page_text)
                     for price_str in price_matches:
                         try:
                             candidate_price = float(price_str.replace(',', ''))
-                            # Filter for reasonable stock prices (between $50 and $1000)
                             if 50 <= candidate_price <= 1000:
                                 price = candidate_price
-                                # Find percentage near this price
                                 price_index = page_text.find(f'${price_str}')
                                 if price_index >= 0:
                                     nearby_text = page_text[max(0, price_index-100):price_index+200]
@@ -120,18 +159,9 @@ class SharePriceService:
                                 break
                         except ValueError:
                             continue
-                
+
                 # If we found a price, return it
                 if price is not None:
-                    # If pct not found nearby, search whole page for first percentage token
-                    if change_percentage is None:
-                        pct_all = re.search(percentage_pattern, soup.get_text())
-                        if pct_all:
-                            try:
-                                change_percentage = float(pct_all.group(1))
-                            except ValueError:
-                                change_percentage = None
-
                     if change_percentage is None:
                         change_percentage = 0.0
                     
@@ -141,9 +171,8 @@ class SharePriceService:
                         "api_source": "web_scrape"
                     }
                     
-                    # Cache for 2 minutes (120 seconds) to allow frequent updates
                     if use_cache:
-                        set(cache_key, result, ttl_seconds=120)
+                        set(cache_key, result, ttl_seconds=60)
                     
                     logger.info(f"Successfully scraped share price: ${price}, change: {change_percentage}%")
                     return result

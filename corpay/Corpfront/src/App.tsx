@@ -1035,7 +1035,7 @@ export default function App() {
                   ${revenue.total_amount > 0 ? (revenue.total_amount / 1000000).toFixed(0) : '0'}M
                 </p>
                 <p className="text-xs" style={{ color: '#0085C2', fontWeight: 600 }}>
-                  ▲ {revenue.percentage_change.toFixed(1)}% vs last month
+                  ▲ {revenue.percentage_change.toFixed(1)}% vs last quarter
                 </p>
               </div>
 

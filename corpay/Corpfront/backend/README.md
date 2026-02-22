@@ -69,6 +69,10 @@ uvicorn app.main:app --reload --port 8000
 
 **Note:** For production, use Supabase PostgreSQL database. See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for details.
 
+## Environment knobs
+
+- `SHARE_PRICE_MAX_AGE_SECONDS` (default: `60`): maximum age (in seconds) of a scraped share price before the backend re-scrapes `https://investor.corpay.com/stock-information`. Lower values force fresher prices.
+
 ## API Documentation
 
 Once the server is running, visit:
