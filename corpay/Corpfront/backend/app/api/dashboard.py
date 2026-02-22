@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from urllib.parse import urljoin
 import os
 from app.database import get_db, SessionLocal
@@ -105,6 +105,23 @@ def _prune_share_prices(db: Session, keep: int = 5) -> None:
         db.rollback()
 
 
+def _purge_old_share_prices(max_age_seconds: int) -> None:
+    """Remove scraped rows older than max_age_seconds and delete all manual rows."""
+    db = SessionLocal()
+    try:
+        db.query(SharePrice).filter(SharePrice.api_source == "manual").delete()
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        db.query(SharePrice).filter(
+            SharePrice.api_source != "manual",
+            SharePrice.timestamp < cutoff,
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
     """
     Phase 1: Read-only DB query. Opens session, reads latest SharePrice, closes session.
@@ -164,6 +181,9 @@ async def get_share_price():
     then opens a new session only to write scraped data. On any error returns last known DB value.
     """
     try:
+        max_age = _max_share_price_age_seconds()
+        _purge_old_share_prices(max_age)
+
         last_row, should_scrape = _get_last_share_price_read_only()
         if not should_scrape and last_row:
             return SharePriceResponse.model_validate(last_row)
@@ -171,6 +191,8 @@ async def get_share_price():
             api_data = await SharePriceService.get_share_price(use_cache=False)
             db = SessionLocal()
             try:
+                # Remove existing non-manual rows so we always return the freshest scrape
+                db.query(SharePrice).filter(SharePrice.api_source != "manual").delete()
                 new_share_price = SharePrice(
                     price=api_data["price"],
                     change_percentage=api_data["change_percentage"],

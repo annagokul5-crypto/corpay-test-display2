@@ -11,6 +11,7 @@ from app.utils.file_handler import (
     save_uploaded_file_local,
     get_file_size_mb,
     get_storage_public_url,
+    delete_file,
 )
 from app.services.excel_parser import ExcelParser
 from app.models.user import User
@@ -275,9 +276,12 @@ async def delete_milestone_dev(
     milestone = db.query(EmployeeMilestone).filter(EmployeeMilestone.id == milestone_id).first()
     if not milestone:
         raise HTTPException(status_code=404, detail="Milestone not found")
-    
-    milestone.is_active = 0
+
+    avatar = milestone.avatar_path or ""
+    db.delete(milestone)
     db.commit()
+    if avatar:
+        delete_file(avatar)
     return {"message": "Milestone deleted successfully"}
 
 
@@ -287,12 +291,15 @@ async def delete_milestone(
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Delete an employee milestone (soft delete)"""
+    """Delete an employee milestone (hard delete)"""
     milestone = db.query(EmployeeMilestone).filter(EmployeeMilestone.id == milestone_id).first()
     if not milestone:
         raise HTTPException(status_code=404, detail="Milestone not found")
-    
-    milestone.is_active = 0
+
+    avatar = milestone.avatar_path or ""
+    db.delete(milestone)
     db.commit()
+    if avatar:
+        delete_file(avatar)
     return {"message": "Milestone deleted successfully"}
 
