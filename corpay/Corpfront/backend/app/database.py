@@ -3,11 +3,11 @@ Production-safe database configuration for FastAPI + SQLAlchemy + Supabase Postg
 Fixes SSL connection closed unexpectedly after Railway idle wake-up.
 Tuned for Supabase Pro: larger pool and overflow to avoid QueuePool limit errors.
 """
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import create_engine, text, event
+from sqlalchemy.exc import OperationalError, PendingRollbackError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, Query
-from typing import Generator
+from typing import Generator, Any
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 from app.config import settings
@@ -18,7 +18,7 @@ import os as _os
 DATABASE_URL = (settings.database_url or "").strip() or _os.getenv("DATABASE_URL", "") or _os.getenv("DATABASE", "") or "sqlite:///./dashboard.db"
 
 # Retry settings for transient SSL/connection drops (Supabase free tier)
-_MAX_DB_RETRIES = 2  # max 2 retries = 3 total attempts
+_MAX_DB_RETRIES = 3  # max 3 retries = 4 total attempts
 
 
 def _env_int(name: str, default: int) -> int:
@@ -41,6 +41,15 @@ def _ensure_sslmode_require(url: str) -> str:
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["sslmode"] = "require"
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """True if the exception is a transient connection/SSL/pending-rollback error worth retrying."""
+    if isinstance(exc, (OperationalError, PendingRollbackError)):
+        return True
+    msg = (getattr(exc, "message", "") or str(exc)).lower()
+    keywords = ("ssl", "connection", "closed", "reset", "pending rollback", "server closed", "broken pipe")
+    return any(k in msg for k in keywords)
 
 
 def _pg_engine(url: str):
@@ -91,6 +100,17 @@ if DATABASE_URL.startswith("postgresql"):
     except Exception as e:
         print(f"WARNING: Startup DB connectivity check failed: {e}")
         print("App will continue - pool will reconnect on first request")
+
+    def _invalidate_on_connection_error(ctx: Any) -> None:
+        """If the error is retryable, invalidate the connection so the pool can replace it."""
+        orig = getattr(ctx, "original_exception", None)
+        sqla = getattr(ctx, "sqlalchemy_exception", None)
+        if (orig and _is_retryable(orig)) or (sqla and _is_retryable(sqla)):
+            conn = getattr(ctx, "connection", None)
+            if conn is not None:
+                conn.invalidate()
+
+    event.listen(engine, "handle_error", _invalidate_on_connection_error)
 else:
     engine = _sqlite_engine(DATABASE_URL)
 
@@ -99,60 +119,168 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def _is_connection_error(exc: BaseException) -> bool:
-    """True if the exception is a transient connection/SSL error worth retrying."""
-    if isinstance(exc, OperationalError):
-        return True
-    msg = (getattr(exc, "message", "") or str(exc)).lower()
-    return "ssl" in msg or "connection" in msg or "closed" in msg or "reset" in msg
+class _RetryingQuery:
+    """
+    Wraps a Query and applies retry (rollback + expire_all) on terminal methods
+    so that SQLAlchemy's internal execute() uses a real Session and retries work.
+    """
+
+    def __init__(self, query: Query, session: Session):
+        self._query = query
+        self._session = session
+
+    def _retry_terminal(self, fn, *args, **kwargs):
+        last_exc = None
+        for attempt in range(_MAX_DB_RETRIES + 1):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as e:
+                if not _is_retryable(e) or attempt == _MAX_DB_RETRIES:
+                    raise
+                last_exc = e
+                try:
+                    self._session.rollback()
+                    self._session.expire_all()
+                except Exception:
+                    pass
+        if last_exc is not None:
+            raise last_exc
+
+    def first(self):
+        return self._retry_terminal(self._query.first)
+
+    def all(self):
+        return self._retry_terminal(self._query.all)
+
+    def one(self):
+        return self._retry_terminal(self._query.one)
+
+    def one_or_none(self):
+        return self._retry_terminal(self._query.one_or_none)
+
+    def count(self):
+        return self._retry_terminal(self._query.count)
+
+    def scalar(self):
+        return self._retry_terminal(self._query.scalar)
+
+    def __iter__(self):
+        return self._retry_terminal(lambda: iter(self._query))
+
+    def delete(self):
+        def _do_delete():
+            return self._session.execute(self._query.delete())
+
+        return self._retry_terminal(_do_delete)
+
+    # Chaining methods: return new _RetryingQuery
+    def filter(self, *args, **kwargs):
+        return _RetryingQuery(self._query.filter(*args, **kwargs), self._session)
+
+    def filter_by(self, **kwargs):
+        return _RetryingQuery(self._query.filter_by(**kwargs), self._session)
+
+    def order_by(self, *args, **kwargs):
+        return _RetryingQuery(self._query.order_by(*args, **kwargs), self._session)
+
+    def limit(self, *args, **kwargs):
+        return _RetryingQuery(self._query.limit(*args, **kwargs), self._session)
+
+    def offset(self, *args, **kwargs):
+        return _RetryingQuery(self._query.offset(*args, **kwargs), self._session)
+
+    def join(self, *args, **kwargs):
+        return _RetryingQuery(self._query.join(*args, **kwargs), self._session)
+
+    def outerjoin(self, *args, **kwargs):
+        return _RetryingQuery(self._query.outerjoin(*args, **kwargs), self._session)
+
+    def with_entities(self, *args, **kwargs):
+        return _RetryingQuery(self._query.with_entities(*args, **kwargs), self._session)
+
+    def distinct(self, *args, **kwargs):
+        return _RetryingQuery(self._query.distinct(*args, **kwargs), self._session)
+
+    def group_by(self, *args, **kwargs):
+        return _RetryingQuery(self._query.group_by(*args, **kwargs), self._session)
+
+    def having(self, *args, **kwargs):
+        return _RetryingQuery(self._query.having(*args, **kwargs), self._session)
+
+    def options(self, *args, **kwargs):
+        return _RetryingQuery(self._query.options(*args, **kwargs), self._session)
+
+    def __getattr__(self, name: str):
+        return getattr(self._query, name)
 
 
 class _RetryingSession:
     """
-    Wraps a Session and retries execute/commit on OperationalError (e.g. SSL drop).
-    Max 2 retries (3 attempts total) so the app can recover without returning 500.
+    Wraps a Session and retries execute/commit on OperationalError/PendingRollbackError
+    (e.g. SSL drop). On retry calls rollback() then expire_all() to clear stale cache.
     """
 
     def __init__(self, session: Session):
         self._session = session
 
-    def execute(self, *args, **kwargs):
+    def _retry(self, fn, *args, **kwargs):
         last_exc = None
         for attempt in range(_MAX_DB_RETRIES + 1):
             try:
-                return self._session.execute(*args, **kwargs)
+                return fn(*args, **kwargs)
             except Exception as e:
-                if not _is_connection_error(e) or attempt == _MAX_DB_RETRIES:
+                if not _is_retryable(e) or attempt == _MAX_DB_RETRIES:
                     raise
                 last_exc = e
                 try:
                     self._session.rollback()
+                    self._session.expire_all()
                 except Exception:
                     pass
         if last_exc is not None:
             raise last_exc
+
+    def execute(self, *args, **kwargs):
+        return self._retry(self._session.execute, *args, **kwargs)
 
     def commit(self):
-        last_exc = None
-        for attempt in range(_MAX_DB_RETRIES + 1):
-            try:
-                return self._session.commit()
-            except Exception as e:
-                if not _is_connection_error(e) or attempt == _MAX_DB_RETRIES:
-                    raise
-                last_exc = e
-                try:
-                    self._session.rollback()
-                except Exception:
-                    pass
-        if last_exc is not None:
-            raise last_exc
+        return self._retry(self._session.commit)
 
-    def query(self, *args, **kwargs) -> Query:
-        """Bind query to this wrapper so execute() (and thus retries) are used."""
-        return self._session.query(*args, **kwargs).with_session(self)
+    def query(self, *args, **kwargs) -> _RetryingQuery:
+        return _RetryingQuery(self._session.query(*args, **kwargs), self._session)
 
-    def __getattr__(self, name):
+    # Delegated methods (no retry; caller can use execute/commit for retry when needed)
+    def add(self, *args, **kwargs):
+        return self._session.add(*args, **kwargs)
+
+    def add_all(self, *args, **kwargs):
+        return self._session.add_all(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self._session.delete(*args, **kwargs)
+
+    def flush(self, *args, **kwargs):
+        return self._session.flush(*args, **kwargs)
+
+    def refresh(self, *args, **kwargs):
+        return self._session.refresh(*args, **kwargs)
+
+    def rollback(self, *args, **kwargs):
+        return self._session.rollback(*args, **kwargs)
+
+    def close(self, *args, **kwargs):
+        return self._session.close(*args, **kwargs)
+
+    def get(self, *args, **kwargs):
+        return self._session.get(*args, **kwargs)
+
+    def scalar(self, *args, **kwargs):
+        return self._session.scalar(*args, **kwargs)
+
+    def expire_all(self, *args, **kwargs):
+        return self._session.expire_all(*args, **kwargs)
+
+    def __getattr__(self, name: str):
         return getattr(self._session, name)
 
 
