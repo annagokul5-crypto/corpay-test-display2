@@ -122,10 +122,10 @@ def get_storage_public_url(relative_path: str, api_base: str = "") -> str:
     except Exception:
         pass
 
-    if (settings.supabase_url or "").strip() and (settings.supabase_service_key or "").strip():
-        base = (settings.supabase_url or "").strip().rstrip("/")
+    supabase_base = (settings.supabase_url or "").strip().rstrip("/")
+    if supabase_base:
         bucket = (settings.supabase_uploads_bucket or "uploads").strip() or "uploads"
-        return f"{base}/storage/v1/object/public/{bucket}/{relative_path}"
+        return f"{supabase_base}/storage/v1/object/public/{bucket}/{relative_path}"
     base = (api_base or "").rstrip("/")
     return f"{base}/uploads/{relative_path.lstrip('/')}" if base else f"/uploads/{relative_path.lstrip('/')}"
 
