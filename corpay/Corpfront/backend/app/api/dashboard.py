@@ -73,6 +73,15 @@ def _share_price_timestamp_seconds_ago(ts: datetime) -> float:
     return (now - ts).total_seconds()
 
 
+def _max_share_price_age_seconds() -> int:
+    """How old a scraped share price can be before we refresh. Default 300s (5 minutes)."""
+    try:
+        val = int(os.getenv("SHARE_PRICE_MAX_AGE_SECONDS", "300").strip())
+        return val if val > 0 else 300
+    except Exception:
+        return 300
+
+
 def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
     """
     Phase 1: Read-only DB query. Opens session, reads latest SharePrice, closes session.
@@ -87,7 +96,8 @@ def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
             .order_by(SharePrice.timestamp.desc())
             .first()
         )
-        if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < 3600:
+        max_age = _max_share_price_age_seconds()
+        if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < max_age:
             return (last_scraped, False)
         return (last_scraped, True)
     finally:
