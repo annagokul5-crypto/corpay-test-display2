@@ -33,7 +33,7 @@ def get_password_hash(password: str) -> str:
 
 
 @router.post("/login", response_model=Token)
-async def login(
+def login(
     user_credentials: UserLogin,
     db: Session = Depends(get_db)
 ):

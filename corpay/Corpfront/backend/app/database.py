@@ -98,6 +98,7 @@ def _pg_engine(url: str):
 
     return create_engine(
         url,
+        use_native_hstore=False,
         pool_size=pool_size,
         max_overflow=max_overflow,
         pool_timeout=pool_timeout,

@@ -12,8 +12,11 @@ from app.api import dashboard, auth, revenue, posts, employees, payments, system
 from app.models.user import User
 import bcrypt
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# Create database tables without crashing process on transient DB SSL disconnects.
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"WARNING: Base.metadata.create_all failed at startup: {e}")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
