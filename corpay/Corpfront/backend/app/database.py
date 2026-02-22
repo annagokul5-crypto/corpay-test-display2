@@ -3,14 +3,17 @@ Production-safe database configuration for FastAPI + SQLAlchemy + Supabase Postg
 Fixes SSL connection closed unexpectedly after Railway idle wake-up.
 Tuned for Supabase Pro: larger pool and overflow to avoid QueuePool limit errors.
 """
-from sqlalchemy import create_engine, text, event
+import base64
+import logging
+import tempfile
+from time import perf_counter
+from typing import Any, Generator
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError, PendingRollbackError
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, Query
-from typing import Generator, Any
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
-from time import perf_counter
-import logging
+from sqlalchemy.orm import Query, Session, sessionmaker
 
 from app.config import settings
 
@@ -68,6 +71,31 @@ def _pg_engine(url: str):
     pool_timeout = _env_int("DB_POOL_TIMEOUT", 45)
     # Recycle frequently to proactively refresh SSL connections during the 9–5 window
     pool_recycle = _env_int("DB_POOL_RECYCLE", 240)  # seconds
+
+    connect_args = {
+        "sslmode": "require",
+        "connect_timeout": 10,
+        "options": "-c statement_timeout=30000",
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 5,
+        "keepalives_count": 3,
+        "application_name": "corpay_dashboard",
+    }
+
+    # Supabase CA cert for verify-ca: set SUPABASE_CA_CERT to base64-encoded PEM (or use default)
+    ca_b64 = _os.getenv(
+        "SUPABASE_CA_CERT",
+        "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUR4RENDQXF5Z0F3SUJBZ0lVYkx4TW9kNjJQMmt0Q2lBa3huS0p3dEU5VlBZd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2F6RUxNQWtHQTFVRUJoTUNWVk14RURBT0JnTlZCQWdNQjBSbGJIZGhjbVV4RXpBUkJnTlZCQWNNQ2s1bApkeUJEWVhOMGJHVXhGVEFUQmdOVkJBb01ERk4xY0dGaVlYTmxJRWx1WXpFZU1Cd0dBMVVFQXd3VlUzVndZV0poCmMyVWdVbTl2ZENBeU1ESXhJRU5CTUI0WERUSXhNRFF5T0RFd05UWTFNMW9YRFRNeE1EUXlOakV3TlRZMU0xb3cKYXpFTE1Ba0dBMVVFQmhNQ1ZWTXhFREFPQmdOVkJBZ01CMFJsYkhkaGNtVXhFekFSQmdOVkJBY01DazVsZHlCRApZWE4wYkdVeEZUQVRCZ05WQkFvTURGTjFjR0ZpWVhObElFbHVZekVlTUJ3R0ExVUVBd3dWVTNWd1lXSmhjMlVnClVtOXZkQ0F5TURJeElFTkJNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQXFRWFcKUXlIT0IrcVIyR0pvYkNxL0NCbVE0MEcwb0RtQ0MzbXpWbm44c3Y0WE5lV3RFNVhjRUwwdVZpaDdKbzREa3gxUQpEbUdIQkgxekRmZ3MycVhpTGI2eHB3L0NLUVB5cFpXMUpzc09UTUlmUXBwTlE4N0s3NVlhMHAyNVkzZVBTMnQyCkd0dkh4TmpVVjZrak9aakVuMnlXRWNCZHBPVkNVWUJWRkJOTUI0WUJIa05SRGEvK1M0dXl3QW9hVFduQ0pMVWkKY3ZUbEhtTXc2eFNRUW4xVWZSUUhrNTBETUNFSjdDeTFSeHJaSnJrWFhSUDNMcVFMMmlqSjZGNHlNZmgrR3liNApPNFhham9Wai8rUjRHd3l3S1lyclM4UHJTTnR3eHI1U3RsUU84eklRVVNNaXEyNndNOG1nRUxGbFMvMzJVY2x0Ck5hUTF4QlJpemt6cFpjdDlEd0lEQVFBQm8yQXdYakFMQmdOVkhROEVCQU1DQVFZd0hRWURWUjBPQkJZRUZLalgKdVhZMzJDenRraEltbmc0eUpOVXRhVVlzTUI4R0ExVWRJd1FZTUJhQUZLalh1WFkzMkN6dGtoSW1uZzR5Sk5VdAphVVlzTUE4R0ExVWRFd0VCL3dRRk1BTUJBZjh3RFFZSktvWklodmNOQVFFTEJRQURnZ0VCQUI4c3B6Tm4rNFZVCnRWeGJkTWFYKzM5WjUwc2M3dUFUbXVzMTZqbW1IamhJSHorbC85R2xKNUtxQU1PeDI2bVBaZ2Z6RzdvbmVMMmIKVlcrV2dZVWtUVDNYRVBGV25UcDJSSndRYW84L3RZUFhXRUpEYzBXVlFIcnBtbldPRktVL2QzTXFCZ0JtNXkrNgpqQjgxVFUvUkcyclZlclBEV1ArMU1NY05OeTA0OTFDVEw1WFFaN0pmREpKOUNDbVhTZHRUbDR1VVFuU3V2L1F4CkNlYTEzQlgyWmdKYzdBdTMwdmloTGh1YjUyRGU0UC80Z29uS3NOSFlkYldqZzdPV0t3TnYveml0R0RWREI5WTIKQ01UeVpLRzNYRXU1R2hsMUxFbkkzUW1FS3NxYUNMdjEyQm5WamJrU2Vac01uZXZKUHMxWWU2VGpqSndkaWs1UApvL2JLaUl6K0ZxOD0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=",
+    )
+    if ca_b64:
+        cert_bytes = base64.b64decode(ca_b64)
+        tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=".crt")
+        tmpfile.write(cert_bytes)
+        tmpfile.close()
+        connect_args["sslrootcert"] = tmpfile.name
+        connect_args["sslmode"] = "verify-ca"
+
     return create_engine(
         url,
         pool_size=pool_size,
@@ -76,16 +104,7 @@ def _pg_engine(url: str):
         pool_recycle=pool_recycle,
         pool_pre_ping=True,
         pool_use_lifo=True,
-        connect_args={
-            "sslmode": "require",
-            "connect_timeout": 10,
-            "options": "-c statement_timeout=30000",
-            "keepalives": 1,
-            "keepalives_idle": 30,
-            "keepalives_interval": 5,
-            "keepalives_count": 3,
-            "application_name": "corpay_dashboard",
-        },
+        connect_args=connect_args,
     )
 
 
