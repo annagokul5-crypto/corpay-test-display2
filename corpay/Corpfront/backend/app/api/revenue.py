@@ -380,46 +380,6 @@ async def create_manual_revenue_dev(
     return revenue
 
 
-class ManualSharePriceRequest(BaseModel):
-    price: float
-    change_percentage: float
-
-
-@router.post("/share-price/manual-dev", response_model=SharePriceResponse)
-async def create_manual_share_price_dev(
-    request: ManualSharePriceRequest,
-    db: Session = Depends(get_db)
-):
-    """Manually create share price entry (development mode - no auth required)"""
-    share_price = SharePrice(
-        price=request.price,
-        change_percentage=request.change_percentage,
-        api_source="manual"
-    )
-    db.add(share_price)
-    db.commit()
-    db.refresh(share_price)
-    return share_price
-
-
-@router.post("/share-price/manual", response_model=SharePriceResponse)
-async def create_manual_share_price(
-    request: ManualSharePriceRequest,
-    current_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db)
-):
-    """Manually create share price entry"""
-    share_price = SharePrice(
-        price=request.price,
-        change_percentage=request.change_percentage,
-        api_source="manual"
-    )
-    db.add(share_price)
-    db.commit()
-    db.refresh(share_price)
-    return share_price
-
-
 class ProportionItem(BaseModel):
     category: str
     percentage: float

@@ -24,6 +24,7 @@ from app.services.newsroom_scraper import (
     fetch_corpay_customer_stories,
 )
 from app.utils.cache import get, set
+from app.utils.file_handler import get_storage_public_url
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -39,6 +40,15 @@ def _normalize_post_image_url(url: Optional[str]) -> Optional[str]:
     if url.startswith("/uploads/"):
         return urljoin(_API_BASE_URL.rstrip("/"), url)
     return urljoin("https://www.linkedin.com", url)
+
+
+def _normalize_avatar_url(path: Optional[str]) -> Optional[str]:
+    """Ensure employee avatar is an absolute URL (Supabase public URL or local uploads)."""
+    if not path:
+        return path
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    return get_storage_public_url(path, _API_BASE_URL)
 
 
 @router.get("/revenue", response_model=RevenueResponse)
@@ -67,16 +77,19 @@ def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
     """
     Phase 1: Read-only DB query. Opens session, reads latest SharePrice, closes session.
     Returns (last_row, should_scrape). should_scrape is True when we need to run the scraper
-    (no manual entry, and no row or row older than 1 hour).
+    (no scraped row, or row older than 1 hour).
     """
     db = SessionLocal()
     try:
-        last_row = db.query(SharePrice).order_by(SharePrice.timestamp.desc()).first()
-        if last_row and last_row.api_source == "manual":
-            return (last_row, False)
-        if last_row and _share_price_timestamp_seconds_ago(last_row.timestamp) < 3600:
-            return (last_row, False)
-        return (last_row, True)
+        last_scraped = (
+            db.query(SharePrice)
+            .filter(SharePrice.api_source != "manual")
+            .order_by(SharePrice.timestamp.desc())
+            .first()
+        )
+        if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < 3600:
+            return (last_scraped, False)
+        return (last_scraped, True)
     finally:
         db.close()
 
@@ -88,7 +101,12 @@ def _return_last_share_price_or_fallback() -> SharePriceResponse:
     """
     db = SessionLocal()
     try:
-        last_row = db.query(SharePrice).order_by(SharePrice.timestamp.desc()).first()
+        last_row = (
+            db.query(SharePrice)
+            .filter(SharePrice.api_source != "manual")
+            .order_by(SharePrice.timestamp.desc())
+            .first()
+        )
         if last_row:
             return SharePriceResponse.model_validate(last_row)
         return SharePriceResponse(
@@ -314,6 +332,8 @@ async def get_employee_milestones(limit: int = 20, db: Session = Depends(get_db)
             .limit(limit)
             .all()
         )
+        for m in milestones:
+            m.avatar_path = _normalize_avatar_url(getattr(m, "avatar_path", None))
         return milestones
     except Exception as e:
         import logging
@@ -325,6 +345,8 @@ async def get_employee_milestones(limit: int = 20, db: Session = Depends(get_db)
                 .limit(limit)
                 .all()
             )
+            for m in milestones:
+                m.avatar_path = _normalize_avatar_url(getattr(m, "avatar_path", None))
             return milestones
         except Exception as e2:
             logging.getLogger(__name__).exception("get_employee_milestones fallback failed: %s", e2)
