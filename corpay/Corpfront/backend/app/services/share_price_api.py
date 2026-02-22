@@ -123,7 +123,15 @@ class SharePriceService:
                 
                 # If we found a price, return it
                 if price is not None:
-                    # Default change_percentage if not found
+                    # If pct not found nearby, search whole page for first percentage token
+                    if change_percentage is None:
+                        pct_all = re.search(percentage_pattern, soup.get_text())
+                        if pct_all:
+                            try:
+                                change_percentage = float(pct_all.group(1))
+                            except ValueError:
+                                change_percentage = None
+
                     if change_percentage is None:
                         change_percentage = 0.0
                     
