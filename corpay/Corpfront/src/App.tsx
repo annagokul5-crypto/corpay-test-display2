@@ -424,43 +424,9 @@ export default function App() {
           console.warn('[Initial Load] System performance API failed:', systemRes.reason);
         }
         if (newsroomRes.status === 'fulfilled') {
-          // #region agent log
-          fetch('http://127.0.0.1:7254/ingest/ea07c2c1-9a77-4dea-9334-f6ccf4b26b3e', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'newsroom-pre',
-              hypothesisId: 'F1',
-              location: 'App.tsx:fetchData:newsroomFulfilled',
-              message: 'Newsroom API fulfilled',
-              data: {
-                count: Array.isArray(newsroomRes.value.data) ? newsroomRes.value.data.length : null,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion agent log
           setNewsroomItems(newsroomRes.value.data || []);
         }
         if (resourcesRes.status === 'fulfilled') {
-          // #region agent log
-          fetch('http://127.0.0.1:7254/ingest/ea07c2c1-9a77-4dea-9334-f6ccf4b26b3e', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'resources-pre',
-              hypothesisId: 'F2',
-              location: 'App.tsx:fetchData:resourcesFulfilled',
-              message: 'Resources API fulfilled',
-              data: {
-                count: Array.isArray(resourcesRes.value.data) ? resourcesRes.value.data.length : null,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion agent log
           const data = resourcesRes.value.data;
           const list = Array.isArray(data) ? data : [];
           setResourceItems((prev) => (list.length > 0 ? list : prev));
