@@ -6,7 +6,12 @@ from app.models.employees import EmployeeMilestone
 from app.models.file_upload import FileUpload, FileType
 from app.schemas.employees import EmployeeMilestoneCreate, EmployeeMilestoneUpdate, EmployeeMilestoneResponse
 from app.utils.auth import get_current_admin_user
-from app.utils.file_handler import save_uploaded_file, get_file_size_mb, get_storage_public_url
+from app.utils.file_handler import (
+    save_uploaded_file,
+    save_uploaded_file_local,
+    get_file_size_mb,
+    get_storage_public_url,
+)
 from app.services.excel_parser import ExcelParser
 from app.models.user import User
 import os
@@ -176,7 +181,12 @@ async def upload_employee_photo_dev(
         raise HTTPException(status_code=400, detail="File must have a filename")
 
     try:
-        stored_path, _ = save_uploaded_file(file, "employee-photos")
+        try:
+            stored_path, _ = save_uploaded_file(file, "employee-photos")
+        except Exception:
+            # Fallback to local storage if Supabase upload fails or is misconfigured
+            file.file.seek(0)
+            stored_path, _ = save_uploaded_file_local(file, "employee-photos")
         file_size = get_file_size_mb(stored_path)
         storage_url = get_storage_public_url(stored_path, _API_BASE_URL)
 
@@ -220,7 +230,11 @@ async def upload_employee_photo(
         raise HTTPException(status_code=400, detail="File must have a filename")
 
     try:
-        stored_path, _ = save_uploaded_file(file, "employee-photos")
+        try:
+            stored_path, _ = save_uploaded_file(file, "employee-photos")
+        except Exception:
+            file.file.seek(0)
+            stored_path, _ = save_uploaded_file_local(file, "employee-photos")
         file_size = get_file_size_mb(stored_path)
         storage_url = get_storage_public_url(stored_path, _API_BASE_URL)
 

@@ -79,6 +79,28 @@ def save_uploaded_file(
     return str(file_path.relative_to(upload_dir)), None
 
 
+def save_uploaded_file_local(
+    file: UploadFile, subdirectory: str = ""
+) -> Tuple[str, Optional[str]]:
+    """
+    Force-save uploaded file to local ./uploads (bypasses Supabase). Returns (stored_path, None).
+    Useful as a fallback when Supabase upload fails or is misconfigured.
+    """
+    subdir = subdirectory or "uploads"
+    upload_dir = ensure_upload_dir()
+    if subdirectory:
+        target_dir = upload_dir / subdirectory
+        target_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        target_dir = upload_dir
+    file_extension = Path(file.filename or "").suffix or ""
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = target_dir / unique_filename
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return str(file_path.relative_to(upload_dir)), None
+
+
 def get_storage_public_url(relative_path: str, api_base: str = "") -> str:
     """
     Return the public URL for a stored file. When Supabase is configured, returns Supabase public URL;
