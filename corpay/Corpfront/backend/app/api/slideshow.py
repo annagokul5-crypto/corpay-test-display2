@@ -122,6 +122,15 @@ _config_cache_time: dict[str, float] = {}
 _CONFIG_CACHE_TTL = 30
 
 
+def _clear_config_cache(keys: Optional[list[str]] = None) -> None:
+    """Clear cached config values so subsequent reads reflect DB updates immediately."""
+    targets = set(keys or [])
+    for k in list(_config_cache.keys()):
+        if not targets or k in targets:
+            _config_cache.pop(k, None)
+            _config_cache_time.pop(k, None)
+
+
 def _get_config_value(db: Session, key: str) -> Optional[str]:
     now = time.time()
     if key in _config_cache and key in _config_cache_time and (now - _config_cache_time[key]) < _CONFIG_CACHE_TTL:
@@ -137,6 +146,8 @@ def _get_config_value(db: Session, key: str) -> Optional[str]:
 
 
 def _set_config_value(db: Session, key: str, value: Optional[str]) -> None:
+    _config_cache[key] = value or None
+    _config_cache_time[key] = time.time()
     row = db.query(ApiConfig).filter(ApiConfig.config_key == key).first()
     if row:
         row.config_value = value or ""
@@ -179,6 +190,8 @@ async def upload_ppt_file_dev(
     db: Session = Depends(get_db)
 ):
     """Upload PowerPoint or PDF file for slideshow (development mode - no auth required)"""
+    # Replace any previous slideshow file
+    _delete_slideshow_file_and_state(db)
     if not file.filename or not file.filename.lower().endswith(('.pptx', '.ppt', '.pdf')):
         raise HTTPException(status_code=400, detail="File must be PowerPoint (.pptx, .ppt) or PDF (.pdf)")
     
@@ -214,6 +227,7 @@ async def upload_ppt_file_dev(
     _set_config_value(db, "slideshow_file_name", file.filename)
     _set_config_value(db, "slideshow_type", "file")
     _set_config_value(db, "slideshow_embed_url", "")
+    _clear_config_cache(list(SLIDESHOW_KEYS))
     
     return {
         "message": "File uploaded successfully",
@@ -230,6 +244,8 @@ async def upload_ppt_file(
     db: Session = Depends(get_db)
 ):
     """Upload PowerPoint or PDF file for slideshow"""
+    # Replace any previous slideshow file
+    _delete_slideshow_file_and_state(db)
     if not file.filename or not file.filename.lower().endswith(('.pptx', '.ppt', '.pdf')):
         raise HTTPException(status_code=400, detail="File must be PowerPoint (.pptx, .ppt) or PDF (.pdf)")
     
@@ -265,6 +281,7 @@ async def upload_ppt_file(
     _set_config_value(db, "slideshow_file_name", file.filename)
     _set_config_value(db, "slideshow_type", "file")
     _set_config_value(db, "slideshow_embed_url", "")
+    _clear_config_cache(list(SLIDESHOW_KEYS))
     
     return {
         "message": "File uploaded successfully",
@@ -289,10 +306,12 @@ async def set_slideshow_url_dev(
     _slideshow_state["source"] = url
     _slideshow_state["file_url"] = None
     _slideshow_state["file_name"] = None
+    _slideshow_state["stored_path"] = None
     _set_config_value(db, "slideshow_file_url", "")
     _set_config_value(db, "slideshow_file_name", "")
     _set_config_value(db, "slideshow_type", "url")
     _set_config_value(db, "slideshow_embed_url", url)
+    _clear_config_cache(list(SLIDESHOW_KEYS))
     return {
         "message": "Embed URL set successfully",
         "source": url,
@@ -316,10 +335,12 @@ async def set_slideshow_url(
     _slideshow_state["source"] = url
     _slideshow_state["file_url"] = None
     _slideshow_state["file_name"] = None
+    _slideshow_state["stored_path"] = None
     _set_config_value(db, "slideshow_file_url", "")
     _set_config_value(db, "slideshow_file_name", "")
     _set_config_value(db, "slideshow_type", "url")
     _set_config_value(db, "slideshow_embed_url", url)
+    _clear_config_cache(list(SLIDESHOW_KEYS))
     return {
         "message": "Embed URL set successfully",
         "source": url,
@@ -333,6 +354,7 @@ async def start_slideshow_dev(
     db: Session = Depends(get_db)
 ):
     """Start the slideshow on frontend dashboard (development mode - no auth required)"""
+    _load_slideshow_file_from_db(db)
     source = _slideshow_state.get("source") or _slideshow_state.get("file_url")
     if not source:
         raise HTTPException(status_code=400, detail="No presentation set. Please upload a file or set an embed URL first.")
@@ -360,6 +382,7 @@ async def start_slideshow(
     db: Session = Depends(get_db)
 ):
     """Start the slideshow on frontend dashboard"""
+    _load_slideshow_file_from_db(db)
     source = _slideshow_state.get("source") or _slideshow_state.get("file_url")
     if not source:
         raise HTTPException(status_code=400, detail="No presentation set. Please upload a file or set an embed URL first.")
@@ -435,8 +458,10 @@ def _delete_slideshow_file_and_state(db: Session) -> None:
     _slideshow_state["source"] = None
     _slideshow_state["file_url"] = None
     _slideshow_state["file_name"] = None
+    _slideshow_state["stored_path"] = None
     for key in SLIDESHOW_KEYS:
         _set_config_value(db, key, "")
+    _clear_config_cache(list(SLIDESHOW_KEYS))
     return None
 
 
@@ -481,6 +506,7 @@ async def get_slide_images(db: Session = Depends(get_db)):
     if not _slideshow_state["file_url"]:
         raise HTTPException(status_code=404, detail="No presentation file uploaded")
     
+    upload_dir = Path(settings.upload_dir)
     # Resolve local path: use stored_path from DB (works with Supabase or local) or fallback to URL-derived path
     stored_path = _slideshow_state.get("stored_path")
     if stored_path:
@@ -491,7 +517,6 @@ async def get_slide_images(db: Session = Depends(get_db)):
             file_path = file_url_raw.split("/uploads/", 1)[1].lstrip("/")
         else:
             file_path = file_url_raw.replace("http://localhost:8000/uploads/", "").replace("http://localhost:8080/uploads/", "").lstrip("/")
-        upload_dir = Path(settings.upload_dir)
         full_file_path = upload_dir / file_path
     if not full_file_path.exists():
         raise HTTPException(status_code=404, detail="Presentation file not found")
