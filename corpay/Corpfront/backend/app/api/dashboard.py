@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple
 from datetime import datetime, timezone, date, timedelta
@@ -166,12 +168,33 @@ def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
     """
     db = SessionLocal()
     try:
-        last_scraped = (
-            db.query(SharePrice)
-            .filter(SharePrice.api_source != "manual")
-            .order_by(SharePrice.timestamp.desc())
-            .first()
-        )
+        try:
+            db.execute(text("SELECT 1"))
+            last_scraped = (
+                db.query(SharePrice)
+                .filter(SharePrice.api_source != "manual")
+                .order_by(SharePrice.timestamp.desc())
+                .first()
+            )
+        except Exception as e:
+            if not (isinstance(e, OperationalError) or "ssl" in str(e).lower()):
+                raise
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                db.close()
+            except Exception:
+                pass
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            last_scraped = (
+                db.query(SharePrice)
+                .filter(SharePrice.api_source != "manual")
+                .order_by(SharePrice.timestamp.desc())
+                .first()
+            )
         max_age = _max_share_price_age_seconds()
         if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < max_age:
             return (last_scraped, False)
@@ -187,12 +210,33 @@ def _return_last_share_price_or_fallback() -> SharePriceResponse:
     """
     db = SessionLocal()
     try:
-        last_row = (
-            db.query(SharePrice)
-            .filter(SharePrice.api_source != "manual")
-            .order_by(SharePrice.timestamp.desc())
-            .first()
-        )
+        try:
+            db.execute(text("SELECT 1"))
+            last_row = (
+                db.query(SharePrice)
+                .filter(SharePrice.api_source != "manual")
+                .order_by(SharePrice.timestamp.desc())
+                .first()
+            )
+        except Exception as e:
+            if not (isinstance(e, OperationalError) or "ssl" in str(e).lower()):
+                raise
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                db.close()
+            except Exception:
+                pass
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            last_row = (
+                db.query(SharePrice)
+                .filter(SharePrice.api_source != "manual")
+                .order_by(SharePrice.timestamp.desc())
+                .first()
+            )
         if last_row:
             return SharePriceResponse.model_validate(last_row)
         return SharePriceResponse(
@@ -218,7 +262,13 @@ async def get_share_price():
     """
     try:
         max_age = _max_share_price_age_seconds()
-        _purge_old_share_prices(max_age)
+        try:
+            _purge_old_share_prices(max_age)
+        except Exception as e:
+            if isinstance(e, OperationalError) or "ssl" in str(e).lower():
+                pass
+            else:
+                raise
 
         last_row, should_scrape = _get_last_share_price_read_only()
         if not should_scrape and last_row:
