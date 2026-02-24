@@ -413,7 +413,13 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield _RetryingSession(db)
     except Exception:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
