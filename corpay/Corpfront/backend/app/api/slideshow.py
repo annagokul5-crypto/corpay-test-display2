@@ -177,7 +177,7 @@ def _load_slideshow_file_from_db(db: Session) -> None:
         # Fallback: last slideshow file from FileUpload table
         last_upload = db.query(FileUpload).filter(FileUpload.file_type == FileType.SLIDESHOW).order_by(FileUpload.created_at.desc()).first()
         if last_upload and (last_upload.storage_url or last_upload.stored_path):
-            file_url = last_upload.storage_url or get_storage_public_url(last_upload.stored_path, os.getenv("API_BASE_URL", "http://localhost:8080"))
+            file_url = last_upload.storage_url or get_storage_public_url(last_upload.stored_path, os.getenv("API_BASE_URL", "http://localhost:8000"))
             _slideshow_state["type"] = "file"
             _slideshow_state["source"] = file_url
             _slideshow_state["file_url"] = file_url
@@ -199,7 +199,7 @@ async def upload_ppt_file_dev(
     # Save file (Supabase or local)
     stored_path, _ = save_uploaded_file(file, "slideshow")
     file_size = get_file_size_mb(stored_path)
-    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
+    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
     file_url = get_storage_public_url(stored_path, API_BASE_URL)
     
     # Record upload with storage_url for DB persistence
@@ -253,7 +253,7 @@ async def upload_ppt_file(
     # Save file (Supabase or local)
     stored_path, _ = save_uploaded_file(file, "slideshow")
     file_size = get_file_size_mb(stored_path)
-    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
+    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
     file_url = get_storage_public_url(stored_path, API_BASE_URL)
     
     # Record upload with storage_url for DB persistence
@@ -526,7 +526,7 @@ async def get_slide_images(db: Session = Depends(get_db)):
     slides_dir.mkdir(parents=True, exist_ok=True)
     
     base_name = full_file_path.stem
-    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
+    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
     suffix = full_file_path.suffix.lower()
 
     # PDF: convert each page to PNG with PyMuPDF (no LibreOffice needed)
@@ -616,10 +616,18 @@ async def get_slide_images(db: Session = Depends(get_db)):
         except fitz.FileDataError as e:
             raise HTTPException(status_code=400, detail=f"Invalid or corrupted PDF: {e}")
         except Exception as e:
-            print(f"[Slideshow] PDF conversion error: {e}")
+            error_msg = str(e)
+            print(f"[Slideshow] PDF conversion error: {error_msg}")
             import traceback
             traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Failed to convert PDF to images: {e}")
+            # Provide more helpful error message
+            if "No such file" in error_msg or "cannot find" in error_msg.lower():
+                detail = f"PDF file not found at path: {full_file_path}"
+            elif "Permission" in error_msg or "permission denied" in error_msg.lower():
+                detail = f"Permission denied accessing file or slides directory: {error_msg}"
+            else:
+                detail = f"Failed to convert PDF to images: {error_msg}"
+            raise HTTPException(status_code=500, detail=detail)
 
     # PPT/PPTX: disabled on cloud (Railway has no LibreOffice)
     raise HTTPException(

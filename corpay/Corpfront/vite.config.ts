@@ -38,26 +38,26 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-    build: {
-      target: 'esnext',
-      outDir: 'build',
-    },
-    server: {
-      port: 5174,
-      host: true,
-      open: true,
-      // Proxy Unsplash to avoid ERR_CERT_AUTHORITY_INVALID when using HTTPS localhost or strict SSL
-      proxy: {
-        '/api': {
-          target: 'http://localhost:8080',
-          changeOrigin: true,
-        },
-        '/unsplash': {
-          target: 'https://images.unsplash.com',
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/unsplash/, ''),
-        },
+  build: {
+    target: 'esnext',
+    outDir: 'build',
+  },
+  server: {
+    port: 5174,
+    host: true,
+    open: true,
+    // Proxy Unsplash to avoid ERR_CERT_AUTHORITY_INVALID when using HTTPS localhost or strict SSL
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/unsplash': {
+        target: 'https://images.unsplash.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/unsplash/, ''),
       },
     },
-  });
+  },
+});

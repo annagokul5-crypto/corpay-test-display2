@@ -169,6 +169,17 @@ export default function App() {
     interval_seconds: 5,
   });
 
+  // Special mode: when opened with ?frontend=powerbi, replace key metric cards
+  // with a single Power BI dashboard card (using the admin-configured URL).
+  const isFrontendPowerBI =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('frontend') === 'powerbi';
+
+  const powerBIEmbedUrl =
+    slideshowState.type === 'url'
+      ? (slideshowState.embed_url || slideshowState.file_url)
+      : null;
+
   // Top 3 months by revenue value for bar coloring
   const topThreeMonthsByValue = (() => {
     if (!revenueTrends || revenueTrends.length === 0) return [] as string[];
@@ -1022,221 +1033,245 @@ export default function App() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Main Content - 3 columns */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Top Row - Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Total Revenue and Share Price - Stacked */}
-            <div className="md:col-span-1 flex flex-col gap-4">
-              {/* Total Revenue - Half height */}
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-gray-500">Total Revenue</p>
-                </div>
-                <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: '28px', lineHeight: '1', marginBottom: '4px' }}>
-                  ${revenue.total_amount > 0 ? (revenue.total_amount / 1000000).toFixed(0) : '0'}M
-                </p>
-                <p className="text-xs" style={{ color: '#0085C2', fontWeight: 600 }}>
-                  ▲ {revenue.percentage_change.toFixed(1)}% vs last quarter
-                </p>
-              </div>
-
-              {/* Share Price - Fills remaining space */}
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 flex flex-col justify-center">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs text-gray-500">Corpay Share Price</p>
-                </div>
-                <p style={{ fontWeight: 700, color: '#230C18', fontSize: '28px', lineHeight: '1', marginBottom: '8px' }}>
-                  $ {sharePrice.price > 0 ? sharePrice.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-                </p>
-                <div className="flex items-center gap-1">
-                  <span style={{ color: '#0085C2', fontSize: '16px', fontWeight: 600 }}>
-                    {(() => {
-                      const change = parseFloat(String(sharePrice.change_percentage || 0));
-                      return change >= 0 ? '▲' : '▼';
-                    })()} {sharePrice.change_percentage >= 0 ? '+' : ''}{sharePrice.change_percentage.toFixed(2)}%
-                  </span>
-                </div>
+          {isFrontendPowerBI && powerBIEmbedUrl ? (
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ minHeight: '680px' }}>
+              <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Power BI Dashboard</p>
+              <div className="flex-1 rounded-lg overflow-hidden border border-gray-100" style={{ minHeight: '620px', position: 'relative' }}>
+                <iframe
+                  src={powerBIEmbedUrl}
+                  title="Power BI Dashboard"
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    border: '0',
+                    display: 'block',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0
+                  }}
+                  allowFullScreen
+                />
               </div>
             </div>
-
-            {/* Revenue Proportions */}
-            <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-              <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Revenue Proportions</p>
-                <div className="flex items-center justify-between gap-6 px-4">
-                <ResponsiveContainer width={130} height={130}>
-                  <PieChart>
-                    <Pie
-                      data={revenueProportions}
-                      cx={65}
-                      cy={65}
-                      innerRadius={40}
-                      outerRadius={60}
-                      paddingAngle={3}
-                      dataKey="percentage"
-                    >
-                      {revenueProportions.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 flex-1">
-                  {revenueProportions.map((item) => (
-                    <div key={item.category} className="flex items-center justify-between gap-3 p-2 rounded" style={{ backgroundColor: '#fafafa' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded" style={{ backgroundColor: item.color }}></div>
-                        <span className="text-sm" style={{ color: '#3D1628', fontWeight: 600 }}>{item.category}</span>
-                      </div>
-                      <span style={{ color: '#3D1628', fontWeight: 700, fontSize: '15px' }}>{item.percentage}%</span>
+          ) : (
+            <>
+              {/* Top Row - Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                {/* Total Revenue and Share Price - Stacked */}
+                <div className="md:col-span-1 flex flex-col gap-4">
+                  {/* Total Revenue - Half height */}
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-500">Total Revenue</p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Revenue Trend */}
-            <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col">
-                <div className="flex items-center justify-between mb-4">
-                <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Revenue Trends</p>
-                <div className="flex items-center gap-2">
-                  <div className="px-3 py-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, #981239 0%, #BE1549 100%)', color: 'white', fontSize: '13px', fontWeight: 700 }}>
-                    ${(revenue.total_amount / 1000000).toFixed(0)}M
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 flex items-center justify-center px-2">
-                <ResponsiveContainer width="95%" height={100}>
-                  <BarChart data={revenueTrends} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                    <XAxis 
-                      dataKey="month" 
-                      tick={{ fontSize: 10, fill: '#3D1628', fontWeight: 600 }}
-                      axisLine={{ strokeWidth: 2, stroke: '#3D1628' }}
-                      tickLine={false}
-                    />
-                    <YAxis 
-                      tick={{ fontSize: 10, fill: '#3D1628', fontWeight: 600 }}
-                      axisLine={{ strokeWidth: 2, stroke: '#3D1628' }}
-                      tickLine={false}
-                      // Auto‑scale from 0 up to the maximum
-                      // value coming from the Excel / API data
-                      domain={[0, 'dataMax']}
-                    />
-                    <Bar
-                      dataKey="value"
-                      radius={[4, 4, 0, 0]}
-                      shape={(props: any) => {
-                        const { x, y, width, height, payload } = props;
-                        const month = payload.month;
-                        const rank = topThreeMonthsByValue.indexOf(month);
-
-                        // Corpay color palette for top 3 bars
-                        let fillColor = '#E6E8E7'; // default
-                        if (rank === 0) {
-                          fillColor = '#981239'; // deep Corpay pink - highest
-                        } else if (rank === 1) {
-                          fillColor = '#3D1628'; // dark Corpay plum - second highest
-                        } else if (rank === 2) {
-                          fillColor = '#BE1549'; // lighter Corpay pink - third highest
-                        }
-
-                        return (
-                          <rect
-                            x={x}
-                            y={y}
-                            width={width}
-                            height={height}
-                            fill={fillColor}
-                            rx={4}
-                            ry={4}
-                          />
-                        );
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          {/* Second Row */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Employee Milestones */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:col-span-3" style={{ height: '400px' }}>
-              <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Employee Milestones</p>
-              <div ref={milestonesScrollRef} className="overflow-y-auto flex-1 space-y-3 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {milestonesList.map((milestone, index) => (
-                  <EmployeeMilestone 
-                    key={index}
-                    name={milestone.name}
-                    description={milestone.description}
-                    avatar={milestone.avatar}
-                    borderColor={milestone.borderColor}
-                    backgroundColor={milestone.backgroundColor}
-                    emoji={milestone.emoji}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Right Column - Stacked Boxes */}
-            <div className="md:col-span-2 space-y-4" style={{ height: '400px' }}>
-            {/* Payments Processed Today */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '192px' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>{cardTitles.payments}</p>
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
-                </div>
-                <div className="flex items-center justify-center flex-1 gap-8">
-                  {/* Grey text above value = Subtitle 1 (from admin); value = amount in Cr */}
-                  <div className="text-center space-y-2 flex-1">
-                    <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.paymentsAmountSubtitle}</p>
-                    <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: '32px', lineHeight: '1' }}>
-                      {(payments.amount_processed / 10000000).toFixed(1)}
+                    <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: '28px', lineHeight: '1', marginBottom: '4px' }}>
+                      ${revenue.total_amount > 0 ? (revenue.total_amount / 1000000).toFixed(0) : '0'}M
+                    </p>
+                    <p className="text-xs" style={{ color: '#0085C2', fontWeight: 600 }}>
+                      ▲ {revenue.percentage_change.toFixed(1)}% vs last quarter
                     </p>
                   </div>
 
-                  {/* Vertical Divider */}
-                  <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
-
-                  {/* Grey text above value = Subtitle 2 (from admin); value = transaction count */}
-                  <div className="text-center space-y-2 flex-1">
-                    <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.paymentsTransactionsSubtitle}</p>
-                    <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
-                      {payments.transaction_count.toLocaleString()}
+                  {/* Share Price - Fills remaining space */}
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 flex flex-col justify-center">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs text-gray-500">Corpay Share Price</p>
+                    </div>
+                    <p style={{ fontWeight: 700, color: '#230C18', fontSize: '28px', lineHeight: '1', marginBottom: '8px' }}>
+                      $ {sharePrice.price > 0 ? sharePrice.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
                     </p>
+                    <div className="flex items-center gap-1">
+                      <span style={{ color: '#0085C2', fontSize: '16px', fontWeight: 600 }}>
+                        {(() => {
+                          const change = parseFloat(String(sharePrice.change_percentage || 0));
+                          return change >= 0 ? '▲' : '▼';
+                        })()} {sharePrice.change_percentage >= 0 ? '+' : ''}{sharePrice.change_percentage.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Revenue Proportions */}
+                <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                  <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Revenue Proportions</p>
+                    <div className="flex items-center justify-between gap-6 px-4">
+                    <ResponsiveContainer width={130} height={130}>
+                      <PieChart>
+                        <Pie
+                          data={revenueProportions}
+                          cx={65}
+                          cy={65}
+                          innerRadius={40}
+                          outerRadius={60}
+                          paddingAngle={3}
+                          dataKey="percentage"
+                        >
+                          {revenueProportions.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-2 flex-1">
+                      {revenueProportions.map((item) => (
+                        <div key={item.category} className="flex items-center justify-between gap-3 p-2 rounded" style={{ backgroundColor: '#fafafa' }}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded" style={{ backgroundColor: item.color }}></div>
+                            <span className="text-sm" style={{ color: '#3D1628', fontWeight: 600 }}>{item.category}</span>
+                          </div>
+                          <span style={{ color: '#3D1628', fontWeight: 700, fontSize: '15px' }}>{item.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Revenue Trend */}
+                <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                    <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Revenue Trends</p>
+                    <div className="flex items-center gap-2">
+                      <div className="px-3 py-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, #981239 0%, #BE1549 100%)', color: 'white', fontSize: '13px', fontWeight: 700 }}>
+                        ${(revenue.total_amount / 1000000).toFixed(0)}M
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex items-center justify-center px-2">
+                    <ResponsiveContainer width="95%" height={100}>
+                      <BarChart data={revenueTrends} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis 
+                          dataKey="month" 
+                          tick={{ fontSize: 10, fill: '#3D1628', fontWeight: 600 }}
+                          axisLine={{ strokeWidth: 2, stroke: '#3D1628' }}
+                          tickLine={false}
+                        />
+                        <YAxis 
+                          tick={{ fontSize: 10, fill: '#3D1628', fontWeight: 600 }}
+                          axisLine={{ strokeWidth: 2, stroke: '#3D1628' }}
+                          tickLine={false}
+                          // Auto‑scale from 0 up to the maximum
+                          // value coming from the Excel / API data
+                          domain={[0, 'dataMax']}
+                        />
+                        <Bar
+                          dataKey="value"
+                          radius={[4, 4, 0, 0]}
+                          shape={(props: any) => {
+                            const { x, y, width, height, payload } = props;
+                            const month = payload.month;
+                            const rank = topThreeMonthsByValue.indexOf(month);
+
+                            // Corpay color palette for top 3 bars
+                            let fillColor = '#E6E8E7'; // default
+                            if (rank === 0) {
+                              fillColor = '#981239'; // deep Corpay pink - highest
+                            } else if (rank === 1) {
+                              fillColor = '#3D1628'; // dark Corpay plum - second highest
+                            } else if (rank === 2) {
+                              fillColor = '#BE1549'; // lighter Corpay pink - third highest
+                            }
+
+                            return (
+                              <rect
+                                x={x}
+                                y={y}
+                                width={width}
+                                height={height}
+                                fill={fillColor}
+                                rx={4}
+                                ry={4}
+                              />
+                            );
+                          }}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               </div>
 
-              {/* System Performance / Uptime */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '192px' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>{cardTitles.systemPerformance}</p>
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
+              {/* Second Row */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                {/* Employee Milestones */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:col-span-3" style={{ height: '400px' }}>
+                  <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Employee Milestones</p>
+                  <div ref={milestonesScrollRef} className="overflow-y-auto flex-1 space-y-3 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {milestonesList.map((milestone, index) => (
+                      <EmployeeMilestone 
+                        key={index}
+                        name={milestone.name}
+                        description={milestone.description}
+                        avatar={milestone.avatar}
+                        borderColor={milestone.borderColor}
+                        backgroundColor={milestone.backgroundColor}
+                        emoji={milestone.emoji}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center justify-center flex-1 gap-8">
-                  {/* System Uptime */}
-                  <div className="text-center space-y-2 flex-1">
-                    <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>System Uptime</p>
-                    <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
-                      {systemPerformance.uptime_percentage.toFixed(3)}
-                    </p>
+
+                {/* Right Column - Stacked Boxes */}
+                <div className="md:col-span-2 space-y-4" style={{ height: '400px' }}>
+                {/* Payments Processed Today */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '192px' }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>{cardTitles.payments}</p>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
+                    </div>
+                    <div className="flex items-center justify-center flex-1 gap-8">
+                      {/* Grey text above value = Subtitle 1 (from admin); value = amount in Cr */}
+                      <div className="text-center space-y-2 flex-1">
+                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.paymentsAmountSubtitle}</p>
+                        <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: '32px', lineHeight: '1' }}>
+                          {(payments.amount_processed / 10000000).toFixed(1)}
+                        </p>
+                      </div>
+
+                      {/* Vertical Divider */}
+                      <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
+
+                      {/* Grey text above value = Subtitle 2 (from admin); value = transaction count */}
+                      <div className="text-center space-y-2 flex-1">
+                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.paymentsTransactionsSubtitle}</p>
+                        <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
+                          {payments.transaction_count.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Vertical Divider */}
-                  <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
+                  {/* System Performance / Uptime */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '192px' }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>{cardTitles.systemPerformance}</p>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
+                    </div>
+                    <div className="flex items-center justify-center flex-1 gap-8">
+                      {/* System Uptime */}
+                      <div className="text-center space-y-2 flex-1">
+                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>System Uptime</p>
+                        <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
+                          {systemPerformance.uptime_percentage.toFixed(3)}
+                        </p>
+                      </div>
 
-                  {/* Payment Success Rate */}
-                  <div className="text-center space-y-2 flex-1">
-                    <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>Success Rate</p>
-                    <p style={{ fontWeight: 700, color: '#981239', fontSize: '32px', lineHeight: '1' }}>
-                      {systemPerformance.success_rate.toFixed(2)}
-                    </p>
+                      {/* Vertical Divider */}
+                      <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
+
+                      {/* Payment Success Rate */}
+                      <div className="text-center space-y-2 flex-1">
+                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>Success Rate</p>
+                        <p style={{ fontWeight: 700, color: '#981239', fontSize: '32px', lineHeight: '1' }}>
+                          {systemPerformance.success_rate.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Third Row - Fixed row height so Newsroom matches Resources column; list scrolls inside */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch min-h-0" style={{ height: '420px' }}>
