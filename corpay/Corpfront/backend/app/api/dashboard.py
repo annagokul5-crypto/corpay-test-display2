@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple
 from datetime import datetime, timezone, date, timedelta
 from urllib.parse import urljoin
 import os
-from app.database import get_db, SessionLocal
+from app.database import get_db, SessionLocal, engine
 from app.models.revenue import Revenue, RevenueTrend, RevenueProportion, SharePrice
 from app.models.posts import SocialPost
 from app.models.employees import EmployeeMilestone
@@ -166,19 +165,22 @@ def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
     Returns (last_row, should_scrape). should_scrape is True when we need to run the scraper
     (no scraped row, or row older than max_age).
     """
-    db = SessionLocal()
-    try:
+    last_exc = None
+    for attempt in range(3):
+        db = SessionLocal()
         try:
-            db.execute(text("SELECT 1"))
             last_scraped = (
                 db.query(SharePrice)
                 .filter(SharePrice.api_source != "manual")
                 .order_by(SharePrice.timestamp.desc())
                 .first()
             )
+            max_age = _max_share_price_age_seconds()
+            if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < max_age:
+                return (last_scraped, False)
+            return (last_scraped, True)
         except Exception as e:
-            if not (isinstance(e, OperationalError) or "ssl" in str(e).lower()):
-                raise
+            last_exc = e
             try:
                 db.rollback()
             except Exception:
@@ -187,20 +189,14 @@ def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
                 db.close()
             except Exception:
                 pass
-            db = SessionLocal()
-            db.execute(text("SELECT 1"))
-            last_scraped = (
-                db.query(SharePrice)
-                .filter(SharePrice.api_source != "manual")
-                .order_by(SharePrice.timestamp.desc())
-                .first()
-            )
-        max_age = _max_share_price_age_seconds()
-        if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < max_age:
-            return (last_scraped, False)
-        return (last_scraped, True)
-    finally:
-        db.close()
+            engine.dispose()
+            continue
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+    return (None, True)
 
 
 def _return_last_share_price_or_fallback() -> SharePriceResponse:
@@ -208,19 +204,25 @@ def _return_last_share_price_or_fallback() -> SharePriceResponse:
     Error handling: return last known DB value, or hardcoded fallback only if no row exists.
     Opens a new short-lived session, queries latest SharePrice, closes session.
     """
-    db = SessionLocal()
-    try:
+    last_exc = None
+    for attempt in range(3):
+        db = SessionLocal()
         try:
-            db.execute(text("SELECT 1"))
             last_row = (
                 db.query(SharePrice)
                 .filter(SharePrice.api_source != "manual")
                 .order_by(SharePrice.timestamp.desc())
                 .first()
             )
+            if last_row:
+                return SharePriceResponse.model_validate(last_row)
+            return SharePriceResponse(
+                price=1482.35,
+                change_percentage=1.24,
+                timestamp=datetime.now(timezone.utc),
+            )
         except Exception as e:
-            if not (isinstance(e, OperationalError) or "ssl" in str(e).lower()):
-                raise
+            last_exc = e
             try:
                 db.rollback()
             except Exception:
@@ -229,29 +231,18 @@ def _return_last_share_price_or_fallback() -> SharePriceResponse:
                 db.close()
             except Exception:
                 pass
-            db = SessionLocal()
-            db.execute(text("SELECT 1"))
-            last_row = (
-                db.query(SharePrice)
-                .filter(SharePrice.api_source != "manual")
-                .order_by(SharePrice.timestamp.desc())
-                .first()
-            )
-        if last_row:
-            return SharePriceResponse.model_validate(last_row)
-        return SharePriceResponse(
-            price=1482.35,
-            change_percentage=1.24,
-            timestamp=datetime.now(timezone.utc),
-        )
-    except Exception:
-        return SharePriceResponse(
-            price=1482.35,
-            change_percentage=1.24,
-            timestamp=datetime.now(timezone.utc),
-        )
-    finally:
-        db.close()
+            engine.dispose()
+            continue
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+    return SharePriceResponse(
+        price=1482.35,
+        change_percentage=1.24,
+        timestamp=datetime.now(timezone.utc),
+    )
 
 
 @router.get("/share-price", response_model=SharePriceResponse)
