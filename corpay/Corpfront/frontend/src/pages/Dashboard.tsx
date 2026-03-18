@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { api } from '../services/api'
-import { DollarSign, TrendingUp, Users, Activity } from 'lucide-react'
+import { DollarSign, TrendingUp, Users, Activity, RefreshCw } from 'lucide-react'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -10,41 +10,78 @@ export default function Dashboard() {
     payments: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchStats()
-  }, [])
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async (isRetry = false) => {
+    if (!isRetry) setLoading(true)
+    setError(null)
     try {
-      // Fetch dashboard data to get stats
       const [revenue, employees, posts, payments] = await Promise.all([
-        api.get('/dashboard/revenue').catch(() => ({ data: { total_amount: 0 } })),
-        api.get('/dashboard/employees').catch(() => ({ data: [] })),
-        api.get('/dashboard/posts').catch(() => ({ data: [] })),
-        api.get('/dashboard/payments').catch(() => ({ data: { transaction_count: 0 } })),
+        api.get('/dashboard/revenue'),
+        api.get('/dashboard/employees'),
+        api.get('/dashboard/posts'),
+        api.get('/dashboard/payments'),
       ])
 
       setStats({
-        revenue: revenue.data.total_amount || 0,
-        employees: employees.data.length || 0,
-        posts: posts.data.length || 0,
-        payments: payments.data.transaction_count || 0,
+        revenue: revenue.data?.total_amount || 0,
+        employees: Array.isArray(employees.data) ? employees.data.length : 0,
+        posts: Array.isArray(posts.data) ? posts.data.length : 0,
+        payments: payments.data?.transaction_count || 0,
       })
-    } catch (error) {
-      console.error('Error fetching stats:', error)
+    } catch (err: any) {
+      console.error('Error fetching stats:', err)
+      const message = err.code === 'ECONNABORTED'
+        ? 'Request timed out - the database may be waking up. Retrying...'
+        : 'Failed to load dashboard data. Click refresh to retry.'
+      setError(message)
+      if (err.code === 'ECONNABORTED' && !isRetry) {
+        setTimeout(() => fetchStats(true), 3000)
+      }
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchStats()
+    const interval = setInterval(() => fetchStats(true), 60000)
+    return () => clearInterval(interval)
+  }, [fetchStats])
 
   if (loading) {
-    return <div>Loading...</div>
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
+          <p className="text-gray-600">Loading dashboard data...</p>
+          <p className="text-gray-400 text-sm mt-1">This may take a moment if the database is waking up</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard Overview</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard Overview</h1>
+        <button
+          onClick={() => fetchStats()}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border rounded-lg hover:bg-gray-50"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => fetchStats()} className="ml-4 px-3 py-1 bg-yellow-100 hover:bg-yellow-200 rounded text-yellow-900 text-xs font-medium">
+            Retry
+          </button>
+        </div>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-lg shadow p-6">

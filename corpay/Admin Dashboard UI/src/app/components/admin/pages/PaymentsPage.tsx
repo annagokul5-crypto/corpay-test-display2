@@ -4,6 +4,7 @@ import { Button } from '../../ui/button';
 import { FileUpload } from '../FileUpload';
 import { toast } from 'sonner';
 import { Upload, FileText } from 'lucide-react';
+import { api } from '@/app/services/api';
 
 export function PaymentsPage() {
   const [excelFile, setExcelFile] = useState<File | null>(null);
@@ -15,15 +16,21 @@ export function PaymentsPage() {
       return;
     }
 
+    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('file', excelFile);
+
     setIsUploading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // POST /api/admin/payments/upload
+      await api.post('admin/payments/upload', formData, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        timeout: 120000,
+      });
       toast.success('Payments data uploaded successfully');
       setExcelFile(null);
-    } catch (error) {
-      toast.error('Upload failed');
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || error.message || 'Upload failed';
+      toast.error(`Upload failed: ${msg}`);
     } finally {
       setIsUploading(false);
     }

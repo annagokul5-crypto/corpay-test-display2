@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -98,6 +99,14 @@ async def update_employee_milestone(
     return db_milestone
 
 
+def _active_filter():
+    """Consistent filter: include is_active=1 and NULL (exclude only explicit 0)."""
+    return or_(
+        EmployeeMilestone.is_active == 1,
+        EmployeeMilestone.is_active.is_(None),
+    )
+
+
 @router.get("/dev", response_model=List[EmployeeMilestoneResponse])
 async def list_employee_milestones_dev(
     limit: int = 50,
@@ -105,7 +114,7 @@ async def list_employee_milestones_dev(
 ):
     """List all employee milestones (development mode - no auth required)"""
     milestones = db.query(EmployeeMilestone).filter(
-        EmployeeMilestone.is_active == 1
+        _active_filter()
     ).order_by(EmployeeMilestone.milestone_date.desc()).limit(limit).all()
     for m in milestones:
         m.avatar_path = _public_avatar_url(m.avatar_path)
@@ -120,7 +129,7 @@ async def list_employee_milestones(
 ):
     """List all employee milestones"""
     milestones = db.query(EmployeeMilestone).filter(
-        EmployeeMilestone.is_active == 1
+        _active_filter()
     ).order_by(EmployeeMilestone.milestone_date.desc()).limit(limit).all()
     for m in milestones:
         m.avatar_path = _public_avatar_url(m.avatar_path)

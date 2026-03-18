@@ -145,11 +145,15 @@ export default function App() {
     systemPerformance: string;
     paymentsAmountSubtitle: string;
     paymentsTransactionsSubtitle: string;
+    systemUptimeSubtitle: string;
+    systemSuccessRateSubtitle: string;
   }>({
     payments: 'Payments Processed Today',
     systemPerformance: 'System Performance',
     paymentsAmountSubtitle: 'Amount Processed',
     paymentsTransactionsSubtitle: 'Transactions',
+    systemUptimeSubtitle: 'System Uptime',
+    systemSuccessRateSubtitle: 'Success Rate',
   });
   
   // Slideshow state (PDF/file or Power BI URL)
@@ -239,14 +243,15 @@ export default function App() {
       const systemTitle = data.system_performance_title ?? 'System Performance';
       const amountSub = data.payments_amount_subtitle ?? 'Amount Processed';
       const transactionsSub = data.payments_transactions_subtitle ?? 'Transactions';
-      if (import.meta.env.DEV && (amountSub !== 'Amount Processed' || transactionsSub !== 'Transactions')) {
-        console.log('[CardTitles] Subtitles from API:', { amountSub, transactionsSub });
-      }
+      const uptimeSub = data.system_uptime_subtitle ?? 'System Uptime';
+      const successRateSub = data.system_success_rate_subtitle ?? 'Success Rate';
       setCardTitles({
         payments: paymentsTitle,
         systemPerformance: systemTitle,
         paymentsAmountSubtitle: amountSub,
         paymentsTransactionsSubtitle: transactionsSub,
+        systemUptimeSubtitle: uptimeSub,
+        systemSuccessRateSubtitle: successRateSub,
       });
     } catch (error) {
       console.error('[CardTitles] Error fetching from API:', error);
@@ -452,16 +457,16 @@ export default function App() {
     fetchData();
     fetchCardTitles();
 
-    // Refresh card titles (and subtitles) every 30s so grey labels update when admin changes them
-    const cardTitlesInterval = setInterval(fetchCardTitles, 30000);
+    // Refresh card titles every 60s
+    const cardTitlesInterval = setInterval(fetchCardTitles, 60000);
     
     // Refresh data every 5 minutes
     const interval = setInterval(fetchData, 5 * 60 * 1000);
     
-    // Refresh revenue data more frequently (every 5 seconds) to catch updates immediately
+    // Refresh revenue data every 30 seconds
     const revenueInterval = setInterval(() => {
       fetchRevenueData();
-    }, 5000);
+    }, 30000);
     
     // Function to fetch share price data
     const fetchSharePriceData = async () => {
@@ -512,10 +517,10 @@ export default function App() {
     // Immediately fetch share price data on mount
     fetchSharePriceData();
     
-    // Refresh share price data more frequently (every 3 seconds) to catch updates immediately
+    // Refresh share price data every 30 seconds
     const sharePriceInterval = setInterval(() => {
       fetchSharePriceData();
-    }, 3000);
+    }, 30000);
 
     // Function to fetch payments data
     const fetchPaymentsData = async () => {
@@ -557,14 +562,14 @@ export default function App() {
     fetchPaymentsData();
     fetchSystemPerformanceData();
 
-    // Refresh payments and system performance data every 5 seconds to catch updates immediately
+    // Refresh payments and system performance data every 30 seconds
     const paymentsInterval = setInterval(() => {
       fetchPaymentsData();
-    }, 5000);
+    }, 30000);
 
     const systemPerformanceInterval = setInterval(() => {
       fetchSystemPerformanceData();
-    }, 5000);
+    }, 30000);
     
     // Listen for manual refresh event
     const handleRefreshSharePrice = () => {
@@ -700,10 +705,10 @@ export default function App() {
       }
     };
     
-    // Refresh proportions every 5 seconds
+    // Refresh proportions every 30 seconds
     const proportionsInterval = setInterval(() => {
       fetchRevenueProportionsData();
-    }, 5000);
+    }, 30000);
     
     // Function to fetch employee milestones data
     const fetchEmployeesData = async () => {
@@ -754,11 +759,11 @@ export default function App() {
       }
     };
     
-    // Fetch employee milestones immediately and then every 5 seconds
+    // Fetch employee milestones immediately and then every 30 seconds
     fetchEmployeesData();
     const employeesInterval = setInterval(() => {
       fetchEmployeesData();
-    }, 5000);
+    }, 30000);
     
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('revenueDataUpdated', handleRevenueUpdate as EventListener);
@@ -810,9 +815,9 @@ export default function App() {
       }
     };
     
-    // Poll every 1s so slide interval from Admin is picked up quickly (avoids first slide holding for wrong interval)
-    fetchSlideshowState(); // Initial fetch
-    const slideshowInterval = setInterval(fetchSlideshowState, 1000);
+    // Poll slideshow state every 5s
+    fetchSlideshowState();
+    const slideshowInterval = setInterval(fetchSlideshowState, 5000);
     
     return () => {
       clearInterval(interval);
@@ -1248,9 +1253,8 @@ export default function App() {
                       <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
                     </div>
                     <div className="flex items-center justify-center flex-1 gap-8">
-                      {/* System Uptime */}
                       <div className="text-center space-y-2 flex-1">
-                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>System Uptime</p>
+                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.systemUptimeSubtitle}</p>
                         <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
                           {systemPerformance.uptime_percentage.toFixed(3)}
                         </p>
@@ -1259,9 +1263,8 @@ export default function App() {
                       {/* Vertical Divider */}
                       <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
 
-                      {/* Payment Success Rate */}
                       <div className="text-center space-y-2 flex-1">
-                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>Success Rate</p>
+                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.systemSuccessRateSubtitle}</p>
                         <p style={{ fontWeight: 700, color: '#981239', fontSize: '32px', lineHeight: '1' }}>
                           {systemPerformance.success_rate.toFixed(2)}
                         </p>

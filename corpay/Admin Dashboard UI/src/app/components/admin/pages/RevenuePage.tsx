@@ -728,7 +728,7 @@ export function RevenuePage() {
                         ${revenueSummary.total_amount > 0 ? (revenueSummary.total_amount / 1_000_000).toFixed(0) : '0'}M
                       </span>
                       <span className="text-xs text-green-400">
-                        ▲ {revenueSummary.percentage_change.toFixed(1)}% vs last month
+                        ▲ {revenueSummary.percentage_change.toFixed(1)}% vs last quarter
                       </span>
                     </div>
                   </div>

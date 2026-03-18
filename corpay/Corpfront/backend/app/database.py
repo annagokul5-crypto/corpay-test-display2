@@ -27,7 +27,7 @@ import os as _os
 DATABASE_URL = (settings.database_url or "").strip() or _os.getenv("DATABASE_URL", "") or _os.getenv("DATABASE", "") or "sqlite:///./dashboard.db"
 
 # Retry settings for transient SSL/connection drops (tunable via env, e.g., DB_MAX_RETRIES=3 for Pro)
-_MAX_DB_RETRIES = int(_os.getenv("DB_MAX_RETRIES", "5") or 5)
+_MAX_DB_RETRIES = int(_os.getenv("DB_MAX_RETRIES", "3") or 3)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -72,9 +72,9 @@ def _pg_engine(url: str):
     pool_size = _env_int("DB_POOL_SIZE", 5)
     max_overflow = _env_int("DB_MAX_OVERFLOW", 10)
     pool_timeout = _env_int("DB_POOL_TIMEOUT", 45)
-    # Recycle every 60 s — well before Supabase's ~5-minute idle-kill timeout.
-    # This proactively replaces stale connections so SSL drops never reach queries.
-    pool_recycle = _env_int("DB_POOL_RECYCLE", 60)  # seconds
+    # Recycle every 30 s — well before Supabase's idle-kill timeout.
+    # Shorter recycle proactively replaces stale connections after Railway idle wake-ups.
+    pool_recycle = _env_int("DB_POOL_RECYCLE", 30)  # seconds
 
     connect_args = {
         "sslmode": "require",
@@ -157,10 +157,10 @@ _last_dispose_time: list[float] = [0.0]
 
 
 def _safe_dispose() -> None:
-    """Dispose the engine pool at most once every 2 s across all threads."""
+    """Dispose the engine pool at most once every 1 s across all threads."""
     now = time.monotonic()
     with _dispose_lock:
-        if now - _last_dispose_time[0] >= 2.0:
+        if now - _last_dispose_time[0] >= 1.0:
             try:
                 engine.dispose()
             except Exception:
@@ -207,9 +207,10 @@ class _RetryingQuery:
                 if not _is_retryable(e) or attempt == _MAX_DB_RETRIES:
                     raise
                 last_exc = e
+                delay = 0.3 * (attempt + 1)
                 logger.warning(
                     "DB transient error (attempt %d/%d): %s — retrying in %.1fs",
-                    attempt + 1, _MAX_DB_RETRIES + 1, e, 0.5 * (attempt + 1),
+                    attempt + 1, _MAX_DB_RETRIES + 1, e, delay,
                 )
                 try:
                     self._session.rollback()
@@ -220,7 +221,7 @@ class _RetryingQuery:
                 except Exception:
                     pass
                 _safe_dispose()
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(delay)
         raise last_exc
 
     def _chain(self, method_name: str, *args, **kwargs) -> "_RetryingQuery":
@@ -362,9 +363,10 @@ class _RetryingSession:
                 if not _is_retryable(e) or attempt == _MAX_DB_RETRIES:
                     raise
                 last_exc = e
+                delay = 0.3 * (attempt + 1)
                 logger.warning(
                     "DB transient error (attempt %d/%d): %s — retrying in %.1fs",
-                    attempt + 1, _MAX_DB_RETRIES + 1, e, 0.5 * (attempt + 1),
+                    attempt + 1, _MAX_DB_RETRIES + 1, e, delay,
                 )
                 try:
                     self._session.rollback()
@@ -375,7 +377,7 @@ class _RetryingSession:
                 except Exception:
                     pass
                 _safe_dispose()
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(delay)
         if last_exc is not None:
             raise last_exc
 

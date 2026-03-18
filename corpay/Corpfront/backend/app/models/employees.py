@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, Integer, String, DateTime, Text, text
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -17,5 +17,5 @@ class EmployeeMilestone(Base):
     milestone_date = Column(DateTime(timezone=True), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    is_active = Column(Integer, default=1)  # 1 for active, 0 for inactive
+    is_active = Column(Integer, default=1, server_default=text("1"))  # 1 for active, 0 for inactive
 

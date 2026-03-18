@@ -1,16 +1,15 @@
 import logging
 import os
 from datetime import datetime, timezone, date, timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from urllib.parse import urljoin
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from app.database import get_db, SessionLocal, engine, _RetryingSession
+from app.database import get_db
 from app.models.revenue import Revenue, RevenueTrend, RevenueProportion, SharePrice
 from app.models.posts import SocialPost
 from app.models.employees import EmployeeMilestone
@@ -93,6 +92,32 @@ def _resolve_avatar_url(db: Session, stored_path: Optional[str]) -> Optional[str
     return get_storage_public_url(stored_path, _API_BASE_URL)
 
 
+def _batch_resolve_avatar_urls(db: Session, stored_paths: list[Optional[str]]) -> dict[str, str]:
+    """
+    Resolve multiple avatar paths in a single DB query instead of N separate queries.
+    Returns a dict mapping stored_path -> public URL.
+    """
+    non_null_paths = [p for p in stored_paths if p and not p.startswith(("http://", "https://"))]
+    if not non_null_paths:
+        return {}
+    uploads = (
+        db.query(FileUpload.stored_path, FileUpload.storage_url)
+        .filter(
+            FileUpload.file_type == FileType.EMPLOYEE_PHOTO,
+            FileUpload.stored_path.in_(non_null_paths),
+        )
+        .all()
+    )
+    url_map: dict[str, str] = {}
+    for stored_path, storage_url in uploads:
+        if storage_url and stored_path not in url_map:
+            url_map[stored_path] = storage_url
+    for p in non_null_paths:
+        if p not in url_map:
+            url_map[p] = get_storage_public_url(p, _API_BASE_URL)
+    return url_map
+
+
 @router.get("/revenue", response_model=RevenueResponse)
 async def get_revenue(db: Session = Depends(get_db)):
     """Get current total revenue"""
@@ -124,224 +149,100 @@ def _max_share_price_age_seconds() -> int:
         return 60
 
 
-def _prune_share_prices(db: Session, keep: int = 5) -> None:
-    """
-    Keep only the latest `keep` scraped rows and remove manual rows.
-    This limits stale data lingering in the DB and ensures fallback uses recent scrape.
-    """
-    try:
-        db.query(SharePrice).filter(SharePrice.api_source == "manual").delete()
-        latest_ids_subq = (
-            db.query(SharePrice.id)
-            .filter(SharePrice.api_source != "manual")
-            .order_by(SharePrice.timestamp.desc())
-            .limit(keep)
-            .scalar_subquery()
-        )
-        db.query(SharePrice).filter(
-            SharePrice.api_source != "manual",
-            ~SharePrice.id.in_(latest_ids_subq),
-        ).delete(synchronize_session=False)
-        db.commit()
-    except Exception:
-        db.rollback()
-
-
-def _purge_old_share_prices(max_age_seconds: int) -> None:
-    """Remove scraped rows older than max_age_seconds and delete all manual rows."""
-    raw_db = SessionLocal()
-    db = _RetryingSession(raw_db)
-    try:
-        db.query(SharePrice).filter(SharePrice.api_source == "manual").delete()
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
-        db.query(SharePrice).filter(
-            SharePrice.api_source != "manual",
-            SharePrice.timestamp < cutoff,
-        ).delete(synchronize_session=False)
-        db.commit()
-    except Exception:
-        db.rollback()
-    finally:
-        db.close()
-
-
-def _get_last_share_price_read_only() -> Tuple[Optional[SharePrice], bool]:
-    """
-    Phase 1: Read-only DB query. Opens session, reads latest SharePrice, closes session.
-    Returns (last_row, should_scrape). should_scrape is True when we need to run the scraper
-    (no scraped row, or row older than max_age).
-    """
-    last_exc = None
-    for attempt in range(3):
-        raw_db = SessionLocal()
-        db = _RetryingSession(raw_db)
-        try:
-            last_scraped = (
-                db.query(SharePrice)
-                .filter(SharePrice.api_source != "manual")
-                .order_by(SharePrice.timestamp.desc())
-                .first()
-            )
-            max_age = _max_share_price_age_seconds()
-            if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < max_age:
-                return (last_scraped, False)
-            return (last_scraped, True)
-        except Exception as e:
-            last_exc = e
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            try:
-                db.close()
-            except Exception:
-                pass
-            engine.dispose()
-            continue
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-    return (None, True)
-
-
-def _return_last_share_price_or_fallback() -> SharePriceResponse:
-    """
-    Error handling: return last known DB value, or hardcoded fallback only if no row exists.
-    Opens a new short-lived session, queries latest SharePrice, closes session.
-    """
-    last_exc = None
-    for attempt in range(3):
-        raw_db = SessionLocal()
-        db = _RetryingSession(raw_db)
-        try:
-            last_row = (
-                db.query(SharePrice)
-                .filter(SharePrice.api_source != "manual")
-                .order_by(SharePrice.timestamp.desc())
-                .first()
-            )
-            if last_row:
-                return SharePriceResponse.model_validate(last_row)
-            return SharePriceResponse(
-                price=1482.35,
-                change_percentage=1.24,
-                timestamp=datetime.now(timezone.utc),
-            )
-        except Exception as e:
-            last_exc = e
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            try:
-                db.close()
-            except Exception:
-                pass
-            engine.dispose()
-            continue
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-    return SharePriceResponse(
-        price=1482.35,
-        change_percentage=1.24,
-        timestamp=datetime.now(timezone.utc),
-    )
+_SHARE_PRICE_FALLBACK = SharePriceResponse(
+    price=1482.35,
+    change_percentage=1.24,
+    timestamp=datetime.now(timezone.utc),
+)
 
 
 @router.get("/share-price", response_model=SharePriceResponse)
-async def get_share_price():
+async def get_share_price(db: Session = Depends(get_db)):
     """
-    Get current share price. Uses read-only session, closes before scraping,
-    then opens a new session only to write scraped data. On any error returns last known DB value.
+    Get current share price using the request-scoped DB session.
+    Single session avoids cascading SSL failures from multiple standalone connections.
     """
     try:
         max_age = _max_share_price_age_seconds()
-        try:
-            _purge_old_share_prices(max_age)
-        except Exception as e:
-            if isinstance(e, OperationalError) or "ssl" in str(e).lower():
-                logger.warning("SSL error during share price purge: %s", e)
-            else:
-                raise
 
-        last_row, should_scrape = _get_last_share_price_read_only()
-        if not should_scrape and last_row:
-            return SharePriceResponse.model_validate(last_row)
-        if should_scrape:
+        last_scraped = (
+            db.query(SharePrice)
+            .filter(SharePrice.api_source != "manual")
+            .order_by(SharePrice.timestamp.desc())
+            .first()
+        )
+
+        if last_scraped and _share_price_timestamp_seconds_ago(last_scraped.timestamp) < max_age:
+            return SharePriceResponse.model_validate(last_scraped)
+
+        try:
             api_data = await SharePriceService.get_share_price(use_cache=False)
-            raw_db = SessionLocal()
-            db = _RetryingSession(raw_db)
+        except Exception as scrape_err:
+            logger.warning("Share price scrape failed: %s", scrape_err)
+            if last_scraped:
+                return SharePriceResponse.model_validate(last_scraped)
+            return _SHARE_PRICE_FALLBACK
+
+        try:
+            db.query(SharePrice).filter(SharePrice.api_source != "manual").delete()
+            db.query(SharePrice).filter(SharePrice.api_source == "manual").delete()
+            new_share_price = SharePrice(
+                price=api_data["price"],
+                change_percentage=api_data["change_percentage"],
+                api_source=api_data.get("api_source", "web_scrape"),
+            )
+            db.add(new_share_price)
+            db.commit()
+            db.refresh(new_share_price)
+            return SharePriceResponse.model_validate(new_share_price)
+        except Exception as db_err:
+            logger.warning("Share price DB write failed: %s", db_err)
             try:
-                # Remove existing non-manual rows so we always return the freshest scrape
-                db.query(SharePrice).filter(SharePrice.api_source != "manual").delete()
-                new_share_price = SharePrice(
-                    price=api_data["price"],
-                    change_percentage=api_data["change_percentage"],
-                    api_source=api_data.get("api_source", "web_scrape"),
-                )
-                db.add(new_share_price)
-                db.commit()
-                db.refresh(new_share_price)
-                # Cleanup: drop manual rows and keep only the latest 5 scraped rows
-                _prune_share_prices(db, keep=5)
-                return SharePriceResponse.model_validate(new_share_price)
-            finally:
-                db.close()
-        if last_row:
-            return SharePriceResponse.model_validate(last_row)
-        return _return_last_share_price_or_fallback()
+                db.rollback()
+            except Exception:
+                pass
+            return SharePriceResponse(
+                price=api_data["price"],
+                change_percentage=api_data["change_percentage"],
+                timestamp=datetime.now(timezone.utc),
+            )
+
     except Exception:
         import traceback
         traceback.print_exc()
-        return _return_last_share_price_or_fallback()
+        if last_scraped:
+            return SharePriceResponse.model_validate(last_scraped)
+        return _SHARE_PRICE_FALLBACK
 
 
 @router.get("/card-titles")
 async def get_card_titles(db: Session = Depends(get_db)):
     """Get configurable dashboard card titles and subtitles for payments and system performance."""
-    default_payments = "Payments Processed Today"
-    default_system = "System Performance"
-    default_payments_amount_subtitle = "Amount Processed"
-    default_payments_transactions_subtitle = "Transactions"
+    defaults = {
+        "dashboard_payments_title": "Payments Processed Today",
+        "dashboard_system_title": "System Performance",
+        "dashboard_payments_amount_subtitle": "Amount Processed",
+        "dashboard_payments_transactions_subtitle": "Transactions",
+        "dashboard_system_uptime_subtitle": "System Uptime",
+        "dashboard_system_success_rate_subtitle": "Success Rate",
+    }
 
-    config_keys = [
-        "dashboard_payments_title",
-        "dashboard_system_title",
-        "dashboard_payments_amount_subtitle",
-        "dashboard_payments_transactions_subtitle",
-    ]
     configs = (
         db.query(ApiConfig)
-        .filter(ApiConfig.config_key.in_(config_keys))
+        .filter(ApiConfig.config_key.in_(list(defaults.keys())))
         .all()
     )
 
-    titles = {
-        "payments_title": default_payments,
-        "system_performance_title": default_system,
-        "payments_amount_subtitle": default_payments_amount_subtitle,
-        "payments_transactions_subtitle": default_payments_transactions_subtitle,
+    config_map = {cfg.config_key: cfg.config_value for cfg in configs if cfg.config_value is not None}
+
+    return {
+        "payments_title": config_map.get("dashboard_payments_title", defaults["dashboard_payments_title"]),
+        "system_performance_title": config_map.get("dashboard_system_title", defaults["dashboard_system_title"]),
+        "payments_amount_subtitle": config_map.get("dashboard_payments_amount_subtitle", defaults["dashboard_payments_amount_subtitle"]),
+        "payments_transactions_subtitle": config_map.get("dashboard_payments_transactions_subtitle", defaults["dashboard_payments_transactions_subtitle"]),
+        "system_uptime_subtitle": config_map.get("dashboard_system_uptime_subtitle", defaults["dashboard_system_uptime_subtitle"]),
+        "system_success_rate_subtitle": config_map.get("dashboard_system_success_rate_subtitle", defaults["dashboard_system_success_rate_subtitle"]),
     }
-
-    for cfg in configs:
-        # Allow empty string so user can clear custom text (we still overwrite default)
-        if cfg.config_value is None:
-            continue
-        if cfg.config_key == "dashboard_payments_title":
-            titles["payments_title"] = cfg.config_value
-        elif cfg.config_key == "dashboard_system_title":
-            titles["system_performance_title"] = cfg.config_value
-        elif cfg.config_key == "dashboard_payments_amount_subtitle":
-            titles["payments_amount_subtitle"] = cfg.config_value
-        elif cfg.config_key == "dashboard_payments_transactions_subtitle":
-            titles["payments_transactions_subtitle"] = cfg.config_value
-
-    return titles
 
 
 @router.get("/revenue-trends", response_model=List[RevenueTrendResponse])
@@ -465,15 +366,19 @@ async def get_employee_milestones(limit: int = 20, db: Session = Depends(get_db)
             .filter(or_(
                 EmployeeMilestone.is_active == 1,
                 EmployeeMilestone.is_active.is_(None),
-                EmployeeMilestone.is_active != 0,
             ))
             .order_by(EmployeeMilestone.milestone_date.desc())
             .limit(limit)
             .all()
         )
+        stored_paths = [getattr(m, "avatar_path", None) for m in milestones]
+        url_map = _batch_resolve_avatar_urls(db, stored_paths)
         for m in milestones:
             stored = getattr(m, "avatar_path", None)
-            m.avatar_path = _resolve_avatar_url(db, stored) if stored else None
+            if stored and stored.startswith(("http://", "https://")):
+                pass
+            elif stored:
+                m.avatar_path = url_map.get(stored, _normalize_avatar_url(stored))
         return milestones
     except Exception as e:
         logging.getLogger(__name__).exception("get_employee_milestones failed: %s", e)
@@ -486,7 +391,7 @@ async def get_employee_milestones(limit: int = 20, db: Session = Depends(get_db)
             )
             for m in milestones:
                 stored = getattr(m, "avatar_path", None)
-                m.avatar_path = _resolve_avatar_url(db, stored) if stored else None
+                m.avatar_path = _normalize_avatar_url(stored) if stored else None
             return milestones
         except Exception as e2:
             logging.getLogger(__name__).exception("get_employee_milestones fallback failed: %s", e2)
