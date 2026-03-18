@@ -162,6 +162,7 @@ async def get_share_price(db: Session = Depends(get_db)):
     Get current share price using the request-scoped DB session.
     Single session avoids cascading SSL failures from multiple standalone connections.
     """
+    last_scraped = None
     try:
         max_age = _max_share_price_age_seconds()
 
