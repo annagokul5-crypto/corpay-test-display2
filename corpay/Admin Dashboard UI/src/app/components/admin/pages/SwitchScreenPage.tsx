@@ -469,7 +469,7 @@ export function SwitchScreenPage() {
               <Button
                 onClick={() => {
                   // Open the frontend dashboard in Power BI mode in a new tab.
-                  window.open('https://frontend-finaltry.vercel.app/?frontend=powerbi', '_blank', 'noopener,noreferrer');
+                  window.open('https://corpaytest-display.vercel.app/?frontend=powerbi', '_blank', 'noopener,noreferrer');
                 }}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
               >
