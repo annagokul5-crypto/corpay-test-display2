@@ -49,8 +49,9 @@ export default defineConfig({
     // Proxy Unsplash to avoid ERR_CERT_AUTHORITY_INVALID when using HTTPS localhost or strict SSL
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://corpaytest-backend-production.up.railway.app',
         changeOrigin: true,
+        secure: true,
       },
       '/unsplash': {
         target: 'https://images.unsplash.com',

@@ -1022,7 +1022,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-full w-full p-8 box-border" style={{ 
+    <div className="w-full box-border" style={{ 
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+      padding: 'clamp(6px, 0.8vh, 20px) clamp(8px, 1vw, 24px)',
       backgroundImage: `url(${backgroundPattern})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
@@ -1031,16 +1036,16 @@ export default function App() {
       backgroundColor: '#f5f5f5'
     }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <img src={corpayLogo} alt="Corpay" className="h-10 brightness-0 invert" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'clamp(4px, 0.7vh, 14px)', flexShrink: 0 }}>
+        <img src={corpayLogo} alt="Corpay" className="brightness-0 invert" style={{ height: 'clamp(18px, 2.5vh, 36px)' }} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4" style={{ flex: 1, minHeight: 0, gap: 'clamp(6px, 0.8vh, 16px)' }}>
         {/* Main Content - 3 columns */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3" style={{ display: 'grid', gridTemplateRows: 'auto 1fr 1fr', gap: 'clamp(4px, 0.6vh, 12px)', minHeight: 0 }}>
           {isFrontendPowerBI && powerBIEmbedUrl ? (
             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ minHeight: '680px' }}>
-              <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Power BI Dashboard</p>
+              <p style={{ marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Power BI Dashboard</p>
               <div className="flex-1 rounded-lg overflow-hidden border border-gray-100" style={{ minHeight: '620px', position: 'relative' }}>
                 <iframe
                   src={powerBIEmbedUrl}
@@ -1061,15 +1066,15 @@ export default function App() {
           ) : (
             <>
               {/* Top Row - Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5" style={{ gap: 'clamp(4px, 0.5vh, 12px)' }}>
                 {/* Total Revenue and Share Price - Stacked */}
-                <div className="md:col-span-1 flex flex-col gap-4">
+                <div className="md:col-span-1 flex flex-col" style={{ gap: 'clamp(4px, 0.5vh, 12px)' }}>
                   {/* Total Revenue - Half height */}
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100" style={{ padding: 'clamp(6px, 0.9vh, 16px)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'clamp(2px, 0.3vh, 6px)' }}>
                       <p className="text-xs text-gray-500">Total Revenue</p>
                     </div>
-                    <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: '28px', lineHeight: '1', marginBottom: '4px' }}>
+                    <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: 'clamp(14px, 2.2vh, 28px)', lineHeight: '1', marginBottom: 'clamp(2px, 0.3vh, 4px)' }}>
                       ${revenue.total_amount > 0 ? (revenue.total_amount / 1000000).toFixed(0) : '0'}M
                     </p>
                     <p className="text-xs" style={{ color: '#0085C2', fontWeight: 600 }}>
@@ -1078,15 +1083,15 @@ export default function App() {
                   </div>
 
                   {/* Share Price - Fills remaining space */}
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 flex flex-col justify-center">
-                    <div className="flex items-center justify-between mb-3">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex-1 flex flex-col justify-center" style={{ padding: 'clamp(6px, 0.9vh, 16px)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'clamp(4px, 0.5vh, 10px)' }}>
                       <p className="text-xs text-gray-500">Corpay Share Price</p>
                     </div>
-                    <p style={{ fontWeight: 700, color: '#230C18', fontSize: '28px', lineHeight: '1', marginBottom: '8px' }}>
+                    <p style={{ fontWeight: 700, color: '#230C18', fontSize: 'clamp(14px, 2.2vh, 28px)', lineHeight: '1', marginBottom: 'clamp(4px, 0.6vh, 8px)' }}>
                       $ {sharePrice.price > 0 ? sharePrice.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
                     </p>
                     <div className="flex items-center gap-1">
-                      <span style={{ color: '#0085C2', fontSize: '16px', fontWeight: 600 }}>
+                      <span style={{ color: '#0085C2', fontSize: 'clamp(10px, 1.2vh, 16px)', fontWeight: 600 }}>
                         {(() => {
                           const change = parseFloat(String(sharePrice.change_percentage || 0));
                           return change >= 0 ? '▲' : '▼';
@@ -1097,8 +1102,8 @@ export default function App() {
                 </div>
 
                 {/* Revenue Proportions */}
-                <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-                  <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Revenue Proportions</p>
+                <div className="md:col-span-2 bg-white rounded-lg shadow-sm border border-gray-100" style={{ padding: 'clamp(8px, 1vh, 20px)' }}>
+                  <p style={{ marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Revenue Proportions</p>
                     <div className="flex items-center justify-between gap-6 px-4">
                     <ResponsiveContainer width={130} height={130}>
                       <PieChart>
@@ -1124,7 +1129,7 @@ export default function App() {
                             <div className="w-4 h-4 rounded" style={{ backgroundColor: item.color }}></div>
                             <span className="text-sm" style={{ color: '#3D1628', fontWeight: 600 }}>{item.category}</span>
                           </div>
-                          <span style={{ color: '#3D1628', fontWeight: 700, fontSize: '15px' }}>{item.percentage}%</span>
+                          <span style={{ color: '#3D1628', fontWeight: 700, fontSize: 'clamp(9px, 1.1vh, 15px)' }}>{item.percentage}%</span>
                         </div>
                       ))}
                     </div>
@@ -1132,11 +1137,11 @@ export default function App() {
                 </div>
 
                 {/* Revenue Trend */}
-                <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
-                    <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Revenue Trends</p>
+                <div className="md:col-span-2 bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ padding: 'clamp(8px, 1vh, 20px)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'clamp(4px, 0.6vh, 14px)' }}>
+                    <p style={{ fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Revenue Trends</p>
                     <div className="flex items-center gap-2">
-                      <div className="px-3 py-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, #981239 0%, #BE1549 100%)', color: 'white', fontSize: '13px', fontWeight: 700 }}>
+                      <div className="px-3 py-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, #981239 0%, #BE1549 100%)', color: 'white', fontSize: 'clamp(9px, 1vh, 13px)', fontWeight: 700 }}>
                         ${(revenue.total_amount / 1000000).toFixed(0)}M
                       </div>
                     </div>
@@ -1197,10 +1202,10 @@ export default function App() {
               </div>
 
               {/* Second Row */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 min-h-0" style={{ gap: 'clamp(4px, 0.5vh, 12px)' }}>
                 {/* Employee Milestones */}
-                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:col-span-3" style={{ height: '400px' }}>
-                  <p className="mb-4" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Employee Milestones</p>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col md:col-span-3" style={{ minHeight: 0, overflow: 'hidden', padding: 'clamp(8px, 1vh, 20px)' }}>
+                  <p style={{ flexShrink: 0, marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Employee Milestones</p>
                   <div ref={milestonesScrollRef} className="overflow-y-auto flex-1 space-y-3 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {milestonesList.map((milestone, index) => (
                       <EmployeeMilestone 
@@ -1217,29 +1222,29 @@ export default function App() {
                 </div>
 
                 {/* Right Column - Stacked Boxes */}
-                <div className="md:col-span-2 space-y-4" style={{ height: '400px' }}>
+                <div className="md:col-span-2" style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(4px, 0.6vh, 10px)', minHeight: 0 }}>
                 {/* Payments Processed Today */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '192px' }}>
-                    <div className="flex items-center justify-between mb-4">
-                      <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>{cardTitles.payments}</p>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 'clamp(8px, 1vh, 20px)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'clamp(4px, 0.6vh, 14px)', flexShrink: 0 }}>
+                      <p style={{ fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>{cardTitles.payments}</p>
                       <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
                     </div>
                     <div className="flex items-center justify-center flex-1 gap-8">
                       {/* Grey text above value = Subtitle 1 (from admin); value = amount in Cr */}
                       <div className="text-center space-y-2 flex-1">
-                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.paymentsAmountSubtitle}</p>
-                        <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: '32px', lineHeight: '1' }}>
+                        <p className="text-gray-500" style={{ fontSize: 'clamp(8px, 0.85vh, 11px)', fontWeight: 500 }}>{cardTitles.paymentsAmountSubtitle}</p>
+                        <p style={{ fontWeight: 700, color: 'rgb(152, 18, 57)', fontSize: 'clamp(16px, 2.5vh, 32px)', lineHeight: '1' }}>
                           {(payments.amount_processed / 10000000).toFixed(1)}
                         </p>
                       </div>
 
                       {/* Vertical Divider */}
-                      <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
+                      <div className="w-px" style={{ height: 'clamp(30px, 4vh, 64px)', backgroundColor: '#E6E8E7' }}></div>
 
                       {/* Grey text above value = Subtitle 2 (from admin); value = transaction count */}
                       <div className="text-center space-y-2 flex-1">
-                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.paymentsTransactionsSubtitle}</p>
-                        <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
+                        <p className="text-gray-500" style={{ fontSize: 'clamp(8px, 0.85vh, 11px)', fontWeight: 500 }}>{cardTitles.paymentsTransactionsSubtitle}</p>
+                        <p style={{ fontWeight: 700, color: '#230C18', fontSize: 'clamp(16px, 2.5vh, 32px)', lineHeight: '1' }}>
                           {payments.transaction_count.toLocaleString()}
                         </p>
                       </div>
@@ -1247,25 +1252,25 @@ export default function App() {
                   </div>
 
                   {/* System Performance / Uptime */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '192px' }}>
-                    <div className="flex items-center justify-between mb-4">
-                      <p style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>{cardTitles.systemPerformance}</p>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 'clamp(8px, 1vh, 20px)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'clamp(4px, 0.6vh, 14px)', flexShrink: 0 }}>
+                      <p style={{ fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>{cardTitles.systemPerformance}</p>
                       <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0085C2' }}></div>
                     </div>
                     <div className="flex items-center justify-center flex-1 gap-8">
                       <div className="text-center space-y-2 flex-1">
-                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.systemUptimeSubtitle}</p>
-                        <p style={{ fontWeight: 700, color: '#230C18', fontSize: '32px', lineHeight: '1' }}>
+                        <p className="text-gray-500" style={{ fontSize: 'clamp(8px, 0.85vh, 11px)', fontWeight: 500 }}>{cardTitles.systemUptimeSubtitle}</p>
+                        <p style={{ fontWeight: 700, color: '#230C18', fontSize: 'clamp(16px, 2.5vh, 32px)', lineHeight: '1' }}>
                           {systemPerformance.uptime_percentage.toFixed(3)}
                         </p>
                       </div>
 
                       {/* Vertical Divider */}
-                      <div className="w-px h-16" style={{ backgroundColor: '#E6E8E7' }}></div>
+                      <div className="w-px" style={{ height: 'clamp(30px, 4vh, 64px)', backgroundColor: '#E6E8E7' }}></div>
 
                       <div className="text-center space-y-2 flex-1">
-                        <p className="text-gray-500" style={{ fontSize: '11px', fontWeight: 500 }}>{cardTitles.systemSuccessRateSubtitle}</p>
-                        <p style={{ fontWeight: 700, color: '#981239', fontSize: '32px', lineHeight: '1' }}>
+                        <p className="text-gray-500" style={{ fontSize: 'clamp(8px, 0.85vh, 11px)', fontWeight: 500 }}>{cardTitles.systemSuccessRateSubtitle}</p>
+                        <p style={{ fontWeight: 700, color: '#981239', fontSize: 'clamp(16px, 2.5vh, 32px)', lineHeight: '1' }}>
                           {systemPerformance.success_rate.toFixed(2)}
                         </p>
                       </div>
@@ -1276,21 +1281,21 @@ export default function App() {
             </>
           )}
 
-          {/* Third Row - Fixed row height so Newsroom matches Resources column; list scrolls inside */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch min-h-0" style={{ height: '420px' }}>
+          {/* Third Row - height comes from parent CSS Grid 1fr row; list scrolls inside each card */}
+          <div className="grid grid-cols-1 md:grid-cols-2 items-stretch min-h-0" style={{ gap: 'clamp(4px, 0.5vh, 12px)' }}>
             {/* Corpay Newsroom - fills row height; list scrolls inside */}
             <div className="min-h-0 flex flex-col h-full overflow-hidden">
               <div
-                className="p-6 rounded-lg flex flex-col overflow-hidden flex-1 min-h-0 h-full"
-                style={{
+                className="rounded-lg flex flex-col overflow-hidden flex-1 min-h-0 h-full"
+                style={{ padding: 'clamp(8px, 1vh, 20px)',
                   background: 'linear-gradient(180deg, #fef6f8 0%, #ffffff 100%)',
                   boxShadow: '0 2px 12px rgba(152, 18, 57, 0.08)',
                   border: '1px solid rgba(152, 18, 57, 0.15)',
                 }}
               >
-                <div className="flex items-center gap-2 mb-4 shrink-0">
+                <div className="flex items-center gap-2 shrink-0" style={{ marginBottom: 'clamp(4px, 0.6vh, 14px)' }}>
                   <div className="w-1 h-6 rounded-full" style={{ backgroundColor: '#981239' }} />
-                  <p className="m-0" style={{ fontWeight: 700, color: '#981239', fontSize: '18px' }}>Corpay Newsroom</p>
+                  <p className="m-0" style={{ fontWeight: 700, color: '#981239', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Corpay Newsroom</p>
                 </div>
                 <div
                   ref={newsroomScrollRef}
@@ -1320,8 +1325,8 @@ export default function App() {
 
             {/* Right column: Resources only - fills row height; scrolls inside */}
             <div className="min-h-0 flex flex-col h-full overflow-hidden">
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col overflow-hidden flex-1 min-h-0 h-full">
-                <p className="mb-3 shrink-0" style={{ fontWeight: 700, color: '#3D1628', fontSize: '18px' }}>Resources</p>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col overflow-hidden flex-1 min-h-0 h-full" style={{ padding: 'clamp(8px, 1vh, 20px)' }}>
+                <p className="shrink-0" style={{ marginBottom: 'clamp(4px, 0.5vh, 10px)', fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Resources</p>
                 <div
                   ref={resourcesScrollRef}
                   className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 rounded space-y-4 scrollbar-hide"
@@ -1348,11 +1353,11 @@ export default function App() {
         </div>
 
         {/* LinkedIn Posts Column - Auto Scrolling */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
+        <div className="lg:col-span-1 flex flex-col" style={{ gap: 'clamp(4px, 0.7vh, 14px)', minHeight: 0, overflow: 'hidden' }}>
 
           {/* Corpay Cross-Border Posts */}
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '600px' }}>
-            <p className="mb-4" style={{ fontWeight: 700, color: '#981239', fontSize: '18px' }}>Corpay Cross-Border Posts</p>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ flex: '1.2', minHeight: 0, overflow: 'hidden', padding: 'clamp(6px, 1vh, 16px)' }}>
+            <p style={{ flexShrink: 0, marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#981239', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Corpay Cross-Border Posts</p>
             <div ref={scrollContainerRef2} className="overflow-y-auto scrollbar-hide flex-1" style={{ 
               scrollbarWidth: 'none', 
               msOverflowStyle: 'none'
@@ -1378,8 +1383,8 @@ export default function App() {
           </div>
 
           {/* Corpay Posts */}
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ height: '512px' }}> 
-            <p className="mb-4" style={{ fontWeight: 700, color: '#981239', fontSize: '18px' }}>Corpay Posts</p> 
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 'clamp(6px, 1vh, 16px)' }}> 
+            <p style={{ flexShrink: 0, marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#981239', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Corpay Posts</p> 
             <div ref={scrollContainerRef} className="overflow-y-auto scrollbar-hide flex-1" style={{ 
               scrollbarWidth: 'none', 
               msOverflowStyle: 'none'

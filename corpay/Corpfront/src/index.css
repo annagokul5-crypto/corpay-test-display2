@@ -1305,7 +1305,7 @@ body {
   aspect-ratio: 16 / 9;
   width: min(100vw, 100vh * 16 / 9);
   height: min(100vh, 100vw * 9 / 16);
-  overflow: auto;
+  overflow: hidden;
   flex-shrink: 0;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
 }
