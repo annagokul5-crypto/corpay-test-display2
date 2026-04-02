@@ -25,23 +25,22 @@ export function LinkedInPostCard({ author, timeAgo, content, image, likes = 0, c
       className="block bg-white rounded-lg shadow-sm border border-gray-100 mb-4 flex-shrink-0 overflow-hidden transition-all duration-300 hover:shadow-md hover:border-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#981239] focus-visible:ring-offset-2"
     >
       {/* Header */}
-      <div className="p-4 pb-3">
+      <div className="p-3 pb-2">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ 
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ 
             background: isCorpayBrand 
               ? 'linear-gradient(135deg, #981239 0%, #BE1549 100%)' 
               : 'linear-gradient(135deg, #0085C2 0%, #006ba1 100%)'
           }}>
-            <Linkedin className="w-5 h-5 text-white" />
+            <Linkedin className="w-4 h-4 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm truncate" style={{ color: '#3D1628', fontWeight: 600 }}>{author}</p>
-            <p className="text-xs" style={{ color: '#999' }}>{timeAgo}</p>
+            <p className="truncate" style={{ color: '#3D1628', fontWeight: 600, fontSize: 'clamp(9px, 1.2vh, 14px)' }}>{author}</p>
+            <p style={{ color: '#999', fontSize: 'clamp(8px, 1vh, 12px)' }}>{timeAgo}</p>
           </div>
         </div>
         
-        {/* Content - Display first two lines */}
-        <p className="text-sm leading-relaxed whitespace-pre-line line-clamp-2" style={{ color: '#3D1628' }}>
+        <p className="leading-relaxed whitespace-pre-line line-clamp-2" style={{ color: '#3D1628', fontSize: 'clamp(9px, 1.1vh, 14px)' }}>
           {content}
         </p>
       </div>
@@ -52,7 +51,7 @@ export function LinkedInPostCard({ author, timeAgo, content, image, likes = 0, c
           <ImageWithFallback 
             src={image} 
             alt="LinkedIn post image"
-            className="w-full h-40 object-cover"
+            className="w-full h-32 object-cover"
           />
         </div>
       )}

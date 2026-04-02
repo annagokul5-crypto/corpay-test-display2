@@ -20,15 +20,15 @@ export function ResourceCard({ title, description, type, resourceId, url }: Reso
         <Icon className="w-4 h-4" style={{ color: bgColor }} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium mb-1 line-clamp-2 leading-snug" style={{ color: '#3D1628' }}>{title}</p>
+        <p className="font-medium mb-1 line-clamp-2 leading-snug" style={{ color: '#3D1628', fontSize: 'clamp(9px, 1.2vh, 14px)' }}>{title}</p>
         {description ? (
-          <p className="text-xs line-clamp-2 leading-relaxed" style={{ color: '#6b7280' }}>{description}</p>
+          <p className="line-clamp-2 leading-relaxed" style={{ color: '#6b7280', fontSize: 'clamp(8px, 1vh, 12px)' }}>{description}</p>
         ) : null}
       </div>
     </>
   );
 
-  const className = "flex items-start gap-3 p-3 bg-gray-50/60 rounded-lg cursor-pointer hover:bg-gray-100/80 transition-colors duration-150";
+  const className = "flex items-start gap-3 p-2 bg-gray-50/60 rounded-lg cursor-pointer hover:bg-gray-100/80 transition-colors duration-150";
 
   // Prefer official external URL when available so the resource opens on its real page
   const externalUrl = (url && String(url).trim()) || undefined;

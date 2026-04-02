@@ -943,22 +943,19 @@ export default function App() {
     };
   }, []);
 
-  // Resources auto-scroll (same as LinkedIn posts) - start after paint so ref and scrollHeight are set
+  // Resources auto-scroll
   useEffect(() => {
-    const rafId = requestAnimationFrame(() => {
-      const container = resourcesScrollRef.current;
-      if (!container || container.scrollHeight <= container.clientHeight) return;
-      resourcesScrollIntervalRef.current = setInterval(() => {
-        if (!container) return;
-        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
-          container.scrollTop = 0;
-        } else {
-          container.scrollTop += 1;
-        }
-      }, 40);
-    });
+    const container = resourcesScrollRef.current;
+    if (!container) return;
+    resourcesScrollIntervalRef.current = setInterval(() => {
+      if (!container) return;
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
+        container.scrollTop = 0;
+      } else {
+        container.scrollTop += 1;
+      }
+    }, 40);
     return () => {
-      cancelAnimationFrame(rafId);
       if (resourcesScrollIntervalRef.current) {
         clearInterval(resourcesScrollIntervalRef.current);
         resourcesScrollIntervalRef.current = null;
@@ -966,22 +963,19 @@ export default function App() {
     };
   }, [resourceItems.length]);
 
-  // Newsroom auto-scroll (same as Resources) - start after paint
+  // Newsroom auto-scroll
   useEffect(() => {
-    const rafId = requestAnimationFrame(() => {
-      const container = newsroomScrollRef.current;
-      if (!container || container.scrollHeight <= container.clientHeight) return;
-      newsroomScrollIntervalRef.current = setInterval(() => {
-        if (!container) return;
-        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
-          container.scrollTop = 0;
-        } else {
-          container.scrollTop += 1;
-        }
-      }, 40);
-    });
+    const container = newsroomScrollRef.current;
+    if (!container) return;
+    newsroomScrollIntervalRef.current = setInterval(() => {
+      if (!container) return;
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
+        container.scrollTop = 0;
+      } else {
+        container.scrollTop += 1;
+      }
+    }, 40);
     return () => {
-      cancelAnimationFrame(rafId);
       if (newsroomScrollIntervalRef.current) {
         clearInterval(newsroomScrollIntervalRef.current);
         newsroomScrollIntervalRef.current = null;
@@ -1042,7 +1036,7 @@ export default function App() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4" style={{ flex: 1, minHeight: 0, gap: 'clamp(6px, 0.8vh, 16px)' }}>
         {/* Main Content - 3 columns */}
-        <div className="lg:col-span-3" style={{ display: 'grid', gridTemplateRows: 'auto 1fr 1fr', gap: 'clamp(4px, 0.6vh, 12px)', minHeight: 0 }}>
+        <div className="lg:col-span-3" style={{ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr) minmax(0, 1fr)', gap: 'clamp(4px, 0.6vh, 12px)', minHeight: 0 }}>
           {isFrontendPowerBI && powerBIEmbedUrl ? (
             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col" style={{ minHeight: '680px' }}>
               <p style={{ marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Power BI Dashboard</p>
@@ -1206,7 +1200,7 @@ export default function App() {
                 {/* Employee Milestones */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-100 flex flex-col md:col-span-3" style={{ minHeight: 0, overflow: 'hidden', padding: 'clamp(8px, 1vh, 20px)' }}>
                   <p style={{ flexShrink: 0, marginBottom: 'clamp(4px, 0.6vh, 14px)', fontWeight: 700, color: '#3D1628', fontSize: 'clamp(10px, 1.4vh, 18px)' }}>Employee Milestones</p>
-                  <div ref={milestonesScrollRef} className="overflow-y-auto flex-1 space-y-3 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div ref={milestonesScrollRef} className="overflow-y-auto flex-1 min-h-0 space-y-3 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {milestonesList.map((milestone, index) => (
                       <EmployeeMilestone 
                         key={index}

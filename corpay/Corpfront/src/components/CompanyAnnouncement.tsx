@@ -18,11 +18,11 @@ export function CompanyAnnouncement({ title, description, date, backgroundColor,
   const displayDate = (date || '').trim();
   const content = (
     <>
-      <p style={{ fontWeight: 500, color: '#981239', fontSize: '12px', marginBottom: '6px', opacity: 0.95 }}>
+      <p style={{ fontWeight: 500, color: '#981239', fontSize: 'clamp(8px, 1vh, 12px)', marginBottom: '6px', opacity: 0.95 }}>
         {displayDate || '—'}
       </p>
       <div className="flex items-start justify-between gap-3 mb-2">
-        <p style={{ fontWeight: 600, color: '#3D1628', fontSize: '14px' }} className="flex-1 min-w-0">{title}</p>
+        <p style={{ fontWeight: 600, color: '#3D1628', fontSize: 'clamp(9px, 1.2vh, 14px)' }} className="flex-1 min-w-0">{title}</p>
         <ChevronRight
           className="w-5 h-5 shrink-0 mt-0.5 opacity-80"
           style={{ color: '#981239' }}
@@ -30,7 +30,7 @@ export function CompanyAnnouncement({ title, description, date, backgroundColor,
         />
       </div>
       {description ? (
-        <p style={{ fontWeight: 400, color: '#3D1628', fontSize: '13px', lineHeight: 1.4 }} className="line-clamp-2">{description}</p>
+        <p style={{ fontWeight: 400, color: '#3D1628', fontSize: 'clamp(8px, 1.1vh, 13px)', lineHeight: 1.4 }} className="line-clamp-2">{description}</p>
       ) : null}
     </>
   );
@@ -41,7 +41,7 @@ export function CompanyAnnouncement({ title, description, date, backgroundColor,
     ...(accentBorder ? { borderLeft: `3px solid ${accentColor}` } : {}),
   };
 
-  const cardClassName = 'p-4 rounded-lg cursor-pointer transition-all duration-200 flex flex-col hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#981239]';
+  const cardClassName = 'px-4 py-3 rounded-lg cursor-pointer transition-all duration-200 flex flex-col hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#981239]';
 
   if (link) {
     return (
